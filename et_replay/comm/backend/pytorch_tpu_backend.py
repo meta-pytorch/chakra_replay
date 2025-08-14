@@ -34,16 +34,8 @@ class PyTorchTPUBackend(BaseBackend):
         world_size = self.get_world_size()
         master_ip = self.bootstrap_info.master_ip
         print(
-            "\tRunning on host: %s g-rank: %d, l-rank: %s world_size: %d master_ip: %s device: %s (%s)"
-            % (
-                myhost,
-                global_rank,
-                local_rank,
-                world_size,
-                master_ip,
-                device,
-                hw_device,
-            )
+            f"\tRunning on host: {myhost} g-rank: {global_rank}, l-rank: {local_rank} "
+            f"world_size: {world_size} master_ip: {master_ip} device: {device} ({hw_device})"
         )
 
     # Collectives
@@ -99,15 +91,11 @@ class PyTorchTPUBackend(BaseBackend):
 
     # Memory related
     def get_mem_size(self, collectiveArgs):
-        return (
-            collectiveArgs.ipTensor.nelement() * collectiveArgs.ipTensor.element_size()
-        )
+        return collectiveArgs.ipTensor.nelement() * collectiveArgs.ipTensor.element_size()
 
     def alloc_random(self, sizeArr, curRankDevice, dtype, scaleFactor=1.0):
         if dtype in (torch.int32, torch.long):
-            ipTensor = torch.randint(
-                0, 1000, sizeArr, device=curRankDevice, dtype=dtype
-            )
+            ipTensor = torch.randint(0, 1000, sizeArr, device=curRankDevice, dtype=dtype)
         else:
             ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         # ipTensor = torch.full(
@@ -121,14 +109,10 @@ class PyTorchTPUBackend(BaseBackend):
     def alloc_embedding_tables(self, n, m, curRankDevice, dtype):
         EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
 
-        W = np.random.uniform(
-            low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
-        ).astype(np.float32)
+        W = np.random.uniform(low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)).astype(np.float32)
         # approach 1
 
-        EE.weight.data = torch.tensor(
-            W, dtype=dtype, requires_grad=True, device=curRankDevice
-        )
+        EE.weight.data = torch.tensor(W, dtype=dtype, requires_grad=True, device=curRankDevice)
         return EE
 
     def alloc_empty(self, sizeArr, dtype, curRankDevice):

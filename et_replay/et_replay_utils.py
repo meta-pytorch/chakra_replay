@@ -77,19 +77,13 @@ def is_tensor_list(n, idx, is_input):
 
 def is_tensor(n, idx, is_input):
     types_list = n.input_types if is_input else n.output_types
-    return (
-        isinstance(idx, int)
-        and "Tensor" in types_list[idx]
-        and "GenericList" not in types_list[idx]
-    )
+    return isinstance(idx, int) and "Tensor" in types_list[idx] and "GenericList" not in types_list[idx]
 
 
 def is_op(node, strict=False):
     if not strict:
         return node.type == NodeType.OPERATOR
-    return node.type == NodeType.OPERATOR and (
-        node.parent is not None and node.parent.type != NodeType.OPERATOR
-    )
+    return node.type == NodeType.OPERATOR and (node.parent is not None and node.parent.type != NodeType.OPERATOR)
 
 
 def has_backward_parent(op):
@@ -101,10 +95,7 @@ def has_backward_parent(op):
 
 
 def is_backward_parent(op):
-    return (
-        "autograd::engine::evaluate_function: " in op.name
-        or "Optimizer.step" in op.name
-    )
+    return "autograd::engine::evaluate_function: " in op.name or "Optimizer.step" in op.name
 
 
 def is_backward_aten(op):
@@ -130,11 +121,7 @@ def build_torchscript_func(n):
     input_count = len(n.input_types)
     output_count = len(n.output_types)
 
-    if (
-        n.op_schema == ""
-        or n.name == "aten::record_stream"
-        or n.name.startswith("aten::_foreach")
-    ):
+    if n.op_schema == "" or n.name == "aten::record_stream" or n.name.startswith("aten::_foreach"):
         return None, None
 
     tmp = n.op_schema.split(") -> ")
@@ -144,18 +131,12 @@ def build_torchscript_func(n):
     types = [re.sub(r"\[[0-9]\]", "[]", t) for t in types]  # e.g. int[2] -> int[]
     # print(n.name, n.id, types)
     input_types = [
-        "Tensor" if "Tensor(" in t else t
-        for t in types
-        if ("*)" not in t and "->" not in t)
+        "Tensor" if "Tensor(" in t else t for t in types if ("*)" not in t and "->" not in t)
     ]  # e.g. Tensor(float) -> Tensor; exception: aten::unbind(Tensor(a -> *) self, ...
     # print(n.name, n.id, input_types)
-    input_types[0] = re.sub(
-        r"^.*?\(", "", input_types[0]
-    )  # Strip the op name, e.g. aten::zeros(int[] -> int[]
+    input_types[0] = re.sub(r"^.*?\(", "", input_types[0])  # Strip the op name, e.g. aten::zeros(int[] -> int[]
     # print(n.name, n.id, input_types)
-    output_types = (
-        tmp[-1].lstrip(" (").rstrip(")").split(", ")
-    )  # e.g. (Tensor, Tensor) -> [Tensor, Tensor]
+    output_types = tmp[-1].lstrip(" (").rstrip(")").split(", ")  # e.g. (Tensor, Tensor) -> [Tensor, Tensor]
     # print(n.id, input_types, output_types)
     tmp = []
     for t in output_types:
@@ -180,9 +161,7 @@ def build_torchscript_func(n):
         (
             "%output: {}".format(output_types[0] if output_count == 1 else "NoneType")
             if output_count <= 1
-            else ", ".join(
-                [f"%{idx + input_count}: {t}" for idx, t in enumerate(output_types)]
-            )
+            else ", ".join([f"%{idx + input_count}: {t}" for idx, t in enumerate(output_types)])
         ),
         n.name,
         ", ".join([f"%{idx}" for idx in range(input_count)]),

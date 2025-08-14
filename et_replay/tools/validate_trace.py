@@ -76,16 +76,10 @@ class TraceValidator:
             return True
 
         check_comms_node = (
-            check_comms_node_1_1_0
-            if self.et.schema_pytorch() >= (1, 1, 0)
-            else check_comms_node_pre_1_1_0
+            check_comms_node_1_1_0 if self.et.schema_pytorch() >= (1, 1, 0) else check_comms_node_pre_1_1_0
         )
 
-        return all(
-            check_comms_node(n)
-            for n in self.et.nodes.values()
-            if n.is_op() and n.name == "record_param_comms"
-        )
+        return all(check_comms_node(n) for n in self.et.nodes.values() if n.is_op() and n.name == "record_param_comms")
 
     def _validate_triton(self) -> bool:
         """Make sure triton kernels have correct values
@@ -118,17 +112,10 @@ def main():
 
     execution_json = sys.argv[1]
 
-    with (
-        gzip.open(execution_json, "rb")
-        if execution_json.endswith("gz")
-        else open(execution_json)
-    ) as execution_data:
+    with gzip.open(execution_json, "rb") if execution_json.endswith("gz") else open(execution_json) as execution_data:
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
         t = TraceValidator(execution_trace)
-        print(
-            f"num ops = {t.num_ops()}, num comms = {t.num_comm_ops()}, "
-            f"num triton ops = {t.num_triton_ops()}"
-        )
+        print(f"num ops = {t.num_ops()}, num comms = {t.num_comm_ops()}, num triton ops = {t.num_triton_ops()}")
         print("Trace validation result = ", t.validate())
 
 
