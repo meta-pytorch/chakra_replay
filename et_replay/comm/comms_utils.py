@@ -55,6 +55,7 @@ except ImportError:
 import numpy as np
 
 import torch
+
 from et_replay.comm.backend.base_backend import (
     BaseBackend,
     collectiveArgsHolder,

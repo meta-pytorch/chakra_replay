@@ -23,6 +23,7 @@ from contextlib import nullcontext
 import numpy as np
 
 import torch
+
 from et_replay.comm import comms_utils, commsTraceParser, profiler_trace_analysis
 from et_replay.comm.backend.base_backend import supportedC10dBackends, supportedP2pOps
 from et_replay.comm.comms_utils import (

@@ -23,6 +23,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+
 from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolder
 from et_replay.comm.param_profile import paramProfile
 
