@@ -21,8 +21,8 @@ import time
 from contextlib import nullcontext
 
 import numpy as np
+
 import torch
-from torch.profiler import ProfilerActivity
 
 from et_replay.comm import comms_utils, commsTraceParser, profiler_trace_analysis
 from et_replay.comm.backend.base_backend import supportedC10dBackends, supportedP2pOps
@@ -35,6 +35,7 @@ from et_replay.comm.comms_utils import (
     paramToCommName,
 )
 from et_replay.comm.param_profile import paramProfile, paramTimer
+from torch.profiler import ProfilerActivity
 
 
 try:
