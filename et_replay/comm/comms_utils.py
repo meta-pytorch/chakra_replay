@@ -14,19 +14,25 @@
 
 from __future__ import annotations
 
-import argparse
-
 import logging
 import os
 import random
 import sys
 from abc import ABC, abstractmethod
-from argparse import ArgumentParser, Namespace
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    from argparse import ArgumentParser, Namespace
+    from collections.abc import Callable
+
+    from torch._C._distributed_c10d import ProcessGroup  # @manual
+
 from collections import OrderedDict
-from collections.abc import Callable
 from contextlib import ContextDecorator
 from io import StringIO
 from typing import Any
+
 
 try:
     from et_replay.vendor_internal.fb_internal import (
@@ -47,6 +53,7 @@ except ImportError:
 
 
 import numpy as np
+
 import torch
 from et_replay.comm.backend.base_backend import (
     BaseBackend,
@@ -55,9 +62,8 @@ from et_replay.comm.backend.base_backend import (
     supportedC10dBackends,
     supportedDevices,
 )
-
 from et_replay.comm.param_profile import paramTimer
-from torch._C._distributed_c10d import ProcessGroup  # @manual
+
 
 random.seed()
 
@@ -119,7 +125,7 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
     Returns:
         None
     """
-    # ensures we will have atleast one member/rank
+    # ensures we will have at least one member/rank
     if commsParams.collective in (
         "all_to_all",
         "all_to_allv",
@@ -157,7 +163,8 @@ def get_rank_details(
     Args:
         backendFuncs: Backend we are gathering information from.
     Returns:
-        (local_rank, global_rank, world_size, group, curDevice, curHwDevice): Returns the values of these in the provided backendFunction.
+        (local_rank, global_rank, world_size, group, curDevice, curHwDevice):
+        Returns the values of these in the provided backendFunction.
     """
     local_rank = backendFuncs.get_local_rank()
     global_rank = backendFuncs.get_global_rank()
@@ -276,7 +283,7 @@ def initQuantCommCtx(
     Returns:
         None
     """
-    logger.info(f"communication bitwidth set to {commsParams.bitwidth}")
+    logger.info("communication bitwidth set to %d", commsParams.bitwidth)
 
     if has_internal_libs:
         initialize_collectiveArgs_internal(collectiveArgs, commsParams)
@@ -317,7 +324,9 @@ def checkQuantArgs(
     if collective in ("all_to_all", "all_to_allv"):
         if (beginSize // 4) % quant_a2a_embedding_dim != 0:
             logger.warning(
-                f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
+                "begin size %d must be a multiple of --quant-a2a-embedding-dim %d for all_to_all operation",
+                beginSize,
+                quant_a2a_embedding_dim,
             )
         if not blockingFlag:
             raise NotImplementedError("quantized All_to_all must be synchronous.")
@@ -374,7 +383,9 @@ def paramToCommName(name: str, supported_comms: list[str] | None = None) -> str:
 
     if supported_comms is not None and new_name not in supported_comms:
         logger.error(
-            f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
+            "%s is not a supported communication in PARAM! Supported comms: %s",
+            name,
+            supported_comms,
         )
         gracefulExit()
 
@@ -416,7 +427,7 @@ class commsArgs:
             inSplit: List of input split sizes for rank across current process group.
             outSplit: List of output split sizes for ranks across current process group.
             startTimeNs: Start time of current collective.
-            pgId: Unique indentifier for the process group this collective will use.
+            pgId: Unique identifier for the process group this collective will use.
             groupRanks: Global ranks of the process group, this is used with PG init.
             worldSize: World size of current process group.
             markerStack: Current markers that this collective is a part of.
@@ -584,7 +595,7 @@ class paramStreamGuard(ContextDecorator):
         self.is_blocking = is_blocking
         self.timer = timer
 
-    def __enter__(self) -> paramStreamGuard:
+    def __enter__(self) -> paramStreamGuard:  # noqa: PYI034
         self.cur_stream = self.backendFuncs.switch_stream(self.stream, self.curDevice)
         if self.timer:
             self.timer.start(self.stream)
@@ -621,7 +632,7 @@ class paramDeviceTimer(paramTimer):
     def elapsedTime(self) -> None:
         """
         Record elapsedTime between start and end events.
-        Must be called after syncrhonization ensuring completion of the start and end recording
+        Must be called after synchronization ensuring completion of the start and end recording
         """
         _elapsedTimeNS = self.start_event.elapsed_time(self.end_event) * 1e6
         self.elapsedTimeNS += _elapsedTimeNS  # torch elapsed_time is in MS
@@ -779,7 +790,7 @@ class paramCommsBench(ABC):
         self, commsParams: commsParamsHolderBase, curSize: int, tensor: torch.Tensor
     ) -> None:
         """ "
-        Data validaton check for collectives, will raise an exception if invalid.
+        Data validation check for collectives, will raise an exception if invalid.
 
         Args:
             commsParams: Contains collective information.
@@ -788,7 +799,7 @@ class paramCommsBench(ABC):
         Returns:
             None
         """
-        expRes = self.initVal
+        expectedResult = self.initVal
         if (
             commsParams.collective
             in (
@@ -800,8 +811,8 @@ class paramCommsBench(ABC):
             self.backendFuncs.get_global_rank() == commsParams.srcOrDst
             and commsParams.collective == "reduce"
         ):
-            # NOTE: for sum op. and the inital value is "self.initVal", for boolean type, self.initVal is always True
-            expRes = (
+            # NOTE: for sum op. and the initial value is "self.initVal", for boolean type, self.initVal is always True
+            expectedResult = (
                 self.initVal
                 if tensor.dtype == torch.bool
                 else self.collectiveArgs.world_size * self.initVal
@@ -819,18 +830,22 @@ class paramCommsBench(ABC):
         if isinstance(tensor, list):
             # for allgather, it's a list of tensors:
             for rank, t in enumerate(tensor):
-                if not torch.all(torch.eq(t, expRes)):
+                if not torch.all(torch.eq(t, expectedResult)):
                     for index, val in enumerate(t):
-                        if val != expRes:
+                        if val != expectedResult:
                             raise ValueError(
-                                f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{rank}][{index}] = {t[index]}, expected {expRes}\n {tensor}"
+                                f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{rank}][{index}] = {val}, "
+                                f"expected {expectedResult}\n"
+                                f"{tensor}"
                             )
         else:
-            if not torch.all(torch.eq(tensor, expRes)):
+            if not torch.all(torch.eq(tensor, expectedResult)):
                 for index, val in enumerate(tensor):
-                    if val != expRes:
+                    if val != expectedResult:
                         raise ValueError(
-                            f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
+                            f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{index}] = {val}, "
+                            f"expected {expectedResult}\n"
+                            f"{tensor}"
                         )
 
     def setTensorVal(self, tensor: torch.Tensor, useRandVal: bool = True) -> None:
@@ -893,7 +908,7 @@ class paramCommsBench(ABC):
             )
         # recorded splits in trace is only for dim 0, but tensor in replay has been flattened.
         # need to recalculate the splits for flattened 1D tensor
-        # corner case: one rank sends zeor data out, but receives data from other ranks, and vice versa.
+        # corner case: one rank sends zero data out, but receives data from other ranks, and vice versa.
         self.collectiveArgs.opTensor_split = (
             [
                 numElementsOut // max(sum(curComm.outSplit), 1) * i
@@ -1262,20 +1277,17 @@ class paramCommsBench(ABC):
     @abstractmethod
     def runBench(self, commsParams: commsParamsHolderBase) -> None:
         """Must override to start the desired benchmarking"""
-        pass
 
     @abstractmethod
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:
         """Must override to run the desired benchmarking"""
-        pass
 
     @abstractmethod
     def reportBenchTime(self, *args, **kwargs) -> None:
         """Must override to report/print the desired output"""
-        pass
 
     @abstractmethod
-    def readArgs(self, parser: ArgumentParser) -> argparse.Namespace:
+    def readArgs(self, parser: ArgumentParser) -> None:
         """Basic/Common arguments for all PARAM-Comm benchmarks"""
         parser.add_argument(
             "--master-ip",
@@ -1333,7 +1345,7 @@ class paramCommsBench(ABC):
             default=("nccl" if self.isCudaAvail() else "gloo"),
             choices=supportedC10dBackends + list(customized_backend.keys()),
             help="The backend to be used in PyTorch distributed process group",
-        )  #  backend used for the network stack
+        )  # backend used for the network stack
         parser.add_argument(
             "-b",
             "--blocking",
@@ -1379,8 +1391,11 @@ class paramCommsBench(ABC):
             "--pg-init-method",
             type=str,
             default=None,
-            help="URL specifying how to initialize the process group. See https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group",
-        )  # URL specifying how to initialize the process group. See https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group
+            help=(
+                "URL specifying how to initialize the process group. See "
+                "https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group"
+            ),
+        )  # URL specifying how to initialize the process group.
         parser.add_argument(
             "--enable-local-report",
             action="store_true",
@@ -1399,27 +1414,33 @@ class paramCommsBench(ABC):
             nargs="+",
             type=str,
             default=None,
-            help="add name of custom performer loggers to use them in additional to text output, user is responsible to implement and register the custom performance logger",
+            help=(
+                "add name of custom performer loggers to use them in additional to text output,"
+                "user is responsible to implement and register the custom performance logger"
+            ),
         )  # use custom performer logger
         parser.add_argument(
             "--init-only",
             action="store_true",
             default=False,
-            help="Toggle to skip running collectives and only do initalization",
+            help="Toggle to skip running collectives and only do initialization",
         )
-        pass
 
     @abstractmethod
     def checkArgs(self, args: Namespace) -> None:
         """Validate some basic/common arguments for all PARAM-Comm benchmarks"""
         if args.nw_stack not in self.supportedNwstacks:
             logger.error(
-                f"Specified backend: {args.nw_stack} is not one of the supported backends: {str(self.supportedNwstacks)}. Make sure the input is using the correct case."
+                "Specified backend: %s is not one of the supported backends: %s. Make sure the input is using the correct case.",
+                args.nw_stack,
+                ", ".join(self.supportedNwstacks),
             )
             gracefulExit()
         if args.num_tpu_cores not in self.supported_tpu_core_valuses:
             logger.error(
-                f"TPU core value: {args.num_tpu_cores} is not one of the supported values: {self.supported_tpu_core_valuses}"
+                "TPU core value: %s is not one of the supported values: %s",
+                args.num_tpu_cores,
+                ", ".join(map(str, self.supported_tpu_core_valuses)),
             )
             gracefulExit()
         # check and set log level
@@ -1442,14 +1463,16 @@ class paramCommsBench(ABC):
         if "MASTER_ADDR" in os.environ:
             if args.master_ip not in (default_master_ip, os.environ["MASTER_ADDR"]):
                 logger.warning(
-                    f"--master-ip={args.master_ip} while MASTER_ADDR={os.environ['MASTER_ADDR']}, "
-                    f"use --master-ip={args.master_ip} and continue..."
+                    "--master-ip=%s while MASTER_ADDR=%s, use --master-ip=%s and continue...",
+                    args.master_ip,
+                    os.environ["MASTER_ADDR"],
+                    args.master_ip,
                 )
                 os.environ["MASTER_ADDR"] = args.master_ip
             else:
                 logger.info(
-                    "From environment variables, using MASTER_ADDR="
-                    + os.environ["MASTER_ADDR"]
+                    "From environment variables, using MASTER_ADDR=%s",
+                    os.environ["MASTER_ADDR"],
                 )
         else:
             os.environ["MASTER_ADDR"] = args.master_ip
@@ -1457,14 +1480,16 @@ class paramCommsBench(ABC):
         if "MASTER_PORT" in os.environ:
             if args.master_port not in (default_master_port, os.environ["MASTER_PORT"]):
                 logger.warning(
-                    f"--master-port={args.master_port} while MASTER_PORT={os.environ['MASTER_PORT']}, "
-                    f"use --master-port={args.master_port} and continue..."
+                    "--master-port=%s while MASTER_PORT=%s, use --master-port=%s and continue...",
+                    args.master_port,
+                    os.environ["MASTER_PORT"],
+                    args.master_port,
                 )
                 os.environ["MASTER_PORT"] = args.master_port
             else:
                 logger.info(
-                    "From environment variables, using MASTER_PORT="
-                    + os.environ["MASTER_PORT"]
+                    "From environment variables, using MASTER_PORT=%s",
+                    os.environ["MASTER_PORT"],
                 )
         else:
             os.environ["MASTER_PORT"] = args.master_port

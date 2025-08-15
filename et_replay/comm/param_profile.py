@@ -21,6 +21,7 @@ from typing import Any
 
 from torch.autograd.profiler import record_function
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +36,7 @@ class paramProfile(record_function):
         self.end = 0.0
         self.intervalNS = 0.0
 
-    def __enter__(self) -> paramProfile:
+    def __enter__(self) -> paramProfile:  # noqa: PYI034
         super().__enter__()
         self.start = time.monotonic()
         return self
@@ -46,7 +47,7 @@ class paramProfile(record_function):
         # if given a valid paramTimer object, directly update the measured time interval
         if isinstance(self.timer, paramTimer):
             self.timer.incrTimeNS(self.intervalNS)
-        logger.debug(f"{self.description} took {self.intervalNS} ns")
+        logger.debug("%s took %d ns", self.description, self.intervalNS)
         super().__exit__(exc_type, exc_value, traceback)
 
 
