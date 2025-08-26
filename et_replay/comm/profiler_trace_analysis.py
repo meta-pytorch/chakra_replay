@@ -18,13 +18,13 @@ import json
 import logging
 import os
 import pathlib
-import re
 import time
 from collections import defaultdict
-from typing import Any, Callable, Dict
+from typing import Any, Callable
 
 import numpy as np
 from intervaltree import Interval, IntervalTree
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -46,7 +46,7 @@ def timer_decorator(func):
 
 # refer to:
 # https://github.com/pytorch/pytorch/blob/2cc01cc6d3ad2aff47e8460667ba654b2e4c9f21/c10/core/ScalarType.h#L61
-_dtype_size_map: Dict[str, int] = {
+_dtype_size_map: dict[str, int] = {
     "Byte": 1,
     "Char": 1,
     "Short": 2,
@@ -80,7 +80,7 @@ _dtype_size_map: Dict[str, int] = {
 }
 
 # refer to: https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md
-_busbw_correction_factors_func_tbl: Dict[str, Callable[[int], float]] = {
+_busbw_correction_factors_func_tbl: dict[str, Callable[[int], float]] = {
     "all_reduce": (lambda n: 2 * (n - 1) / n),
     "all_gather": (lambda n: (n - 1) / n),
     "all_to_all": (lambda n: (n - 1) / n),
@@ -94,7 +94,7 @@ _busbw_correction_factors_func_tbl: Dict[str, Callable[[int], float]] = {
 }
 
 # map collective name of event to key string for bw calculation
-_collname_to_busbw_corr_factor_func: Dict[str, Callable[[int], float]] = {
+_collname_to_busbw_corr_factor_func: dict[str, Callable[[int], float]] = {
     "allreduce": _busbw_correction_factors_func_tbl["all_reduce"],
     "all_gather": _busbw_correction_factors_func_tbl["all_gather"],
     "_allgather_base": _busbw_correction_factors_func_tbl["all_gather"],
@@ -137,7 +137,7 @@ def _calculate_event_data_size(evt):
     )
 
 
-def _calculate_algbw(evt: Dict[str, Any]) -> float:
+def _calculate_algbw(evt: dict[str, Any]) -> float:
     duration_us = _get_dict_value(evt, "dur", f'Missing "dur" in event: {evt}')
     total_bytes = _calculate_event_data_size(evt)
 
@@ -197,7 +197,7 @@ def _get_uneven_all_to_all_data_size(evt, global_rank):
     ):
         in_split_size = []
         out_split_size = []
-        logger.warning(f"Fallback to even all2all bw calculation for event: {evt}")
+        logger.warning("Fallback to even all2all bw calculation for event: %s", evt)
 
     if in_split_size:
         send_elems = in_elems_count - in_split_size[local_rank]
@@ -257,8 +257,8 @@ def calculate_bw_(trace_data, global_rank):
     if failed_events:
         logger.error("Fail to process events:")
         for evt, err_msg in failed_events:
-            logger.error(f"- Event: {evt}")
-            logger.error(f"- Error: {err_msg}")
+            logger.error("- Event: %s", evt)
+            logger.error("- Error: %s", err_msg)
 
 
 def calculate_sbw(trace_data, global_rank):
@@ -275,9 +275,11 @@ def calculate_sbw(trace_data, global_rank):
         return 0
 
     total_data_size = sum(
-        _calculate_event_data_size(evt) * _get_event_busbw_factor(evt)
-        if not _is_uneven_all_to_all_evt(evt)
-        else _get_uneven_all_to_all_data_size(evt, global_rank)
+        (
+            _calculate_event_data_size(evt) * _get_event_busbw_factor(evt)
+            if not _is_uneven_all_to_all_evt(evt)
+            else _get_uneven_all_to_all_data_size(evt, global_rank)
+        )
         for evt in nccl_events
     )
 
@@ -316,8 +318,6 @@ def pick_iter_e2e_time_(trace_data, tl):
 
 
 def pick_comm_bw_(trace_data, comm_bw_data):
-    rank = trace_data["distributedInfo"]["rank"]
-
     group_ranks_to_pg_id = defaultdict(list)
     for pg in trace_data["distributedInfo"]["pg_config"]:
         group_ranks_to_pg_id[tuple(pg["ranks"])].append(int(pg["pg_name"]))
@@ -344,7 +344,7 @@ def pick_comm_bw_(trace_data, comm_bw_data):
         ranks = pg_name2config[evt["args"]["Process Group Name"]]["ranks"]
 
         # If there are multiple process groups with the same ranks, the last element
-        # of this tuple is the idential index to differentiate them across ranks.
+        # of this tuple is the identical index to differentiate them across ranks.
         pg = (*ranks, group_ranks_to_pg_id[tuple(ranks)].index(pg_id))
 
         comm_bw_data[(knl_name, coll_name, data_size, ranks_count)].append(
@@ -367,7 +367,9 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         report_dir (str): dir path for generated reports
     """
     logger.info(
-        f'Parse profiler trace from "{trace_dir}" and generate reports to "{report_dir}"'
+        'Parse profiler trace from "%s" and generate reports to "%s"',
+        trace_dir,
+        report_dir,
     )
 
     processed_trace_dir = os.path.join(report_dir, "profiler_trace_processed")
@@ -387,7 +389,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         if not fpath.is_file():
             continue
 
-        with open(fpath.path, "r", encoding="utf-8") as f:
+        with open(fpath.path, encoding="utf-8") as f:
             trace = json.load(f)
 
         global_rank = trace["distributedInfo"]["rank"]
@@ -426,33 +428,34 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         encoding="utf-8",
     ) as f:
         f.write(
-            f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3 :.3f} ms\n"
+            f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3:.3f} ms\n"
         )
         f.write(
-            f"avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst) :.3f} GB/s\n"
-        )
-
-        f.write(
-            f'\n{" ":>86s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
+            "avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time per rank) "
+            f"among all ranks: {sum(sbw_lst) / len(sbw_lst):.3f} GB/s\n"
         )
 
         f.write(
-            f'{"kernel":>50s} {"coll":>15s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
+            f"\n{' ':>86s}|{' ':>5s}|{'AVG.':^19s}|{'p01':^8s}|{'p50':^8s}|{'p90':^8s}|{'p99':^8s}|\n"
+        )
+
+        f.write(
+            f"{'kernel':>50s} {'coll':>15s} {'size':>12s} {'#rks':>6s}|{'#pgs':>5s}|{'  dur':>10s} "
         )
         for _ in range(5):  # average, p01, p50, p90, p99
-            f.write(f'{" busbw":>8s}|')
+            f.write(f"{' busbw':>8s}|")
         f.write("\n")
 
         f.write(
-            f'{"      ":>66s} {" (B)":>12s} {"    ":>6s}|{"    ":>5s}|{" (ms)":>10s} '
+            f"{'      ':>66s} {' (B)':>12s} {'    ':>6s}|{'    ':>5s}|{' (ms)':>10s} "
         )
         for _ in range(5):  # average, p50, p90, p99
-            f.write(f'{"(GB/s)":>8s}|')
+            f.write(f"{'(GB/s)':>8s}|")
         f.write("\n")
 
         for k, v in comm_bw_summary.items():
             f.write(
-                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} "
+                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1] / 1e3:>10.3f} "
             )
             for i in range(2, len(v)):
                 f.write(f"{v[i]:>8.2f}|")
