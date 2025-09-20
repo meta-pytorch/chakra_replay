@@ -122,6 +122,16 @@ class TensorAllcationMode(Enum):
     # Allocate tensors on the fly and free them after they are out of scope
     LAZY_ALLOCATE = 2
 
+class ReplayMode(Enum):
+    """
+    Enum to define the replay mode: 
+        FULL: replay both compte and comms ops
+        COMP: replay compute ops only
+        COMM: replay comms ops only
+    """
+    FULL = 1
+    COMP = 2
+    COMM = 3
 
 class ExgrReplayManager:
     def __init__(self):
@@ -133,7 +143,7 @@ class ExgrReplayManager:
         self.et_profile = False
         self.cuda_id = 0
         self.debug = False
-        self.compute_only = False
+        self.replay_mode: ReplayMode = ReplayMode.FULL
         self.generator = False
         self.trace_file = ""
         self.dump = False
@@ -255,7 +265,16 @@ class ExgrReplayManager:
         self.et_profile = self.args.et
         self.cuda_id = self.args.cuda
         self.debug = self.args.debug
-        self.compute_only = self.args.compute
+        if self.args.replay_mode == 'full':
+            self.replay_mode = ReplayMode.FULL
+        elif self.args.replay_mode == 'comp':
+            self.replay_mode = ReplayMode.COMP
+        elif self.args.replay_mode == 'comm':
+            self.replay_mode = ReplayMode.COMM
+        else:
+            print(f"Invalid replay mode: {self.replay_mode}.")
+            sys.exit(-1)
+        logger.info(f"SHENGFU replay mode = {self.args.replay_mode}")
         self.generator = self.args.generator
         self.dump = self.args.dump
         self.dump_path = self.args.dump_path
@@ -426,7 +445,7 @@ class ExgrReplayManager:
             for _, t_id, _ in get_input_tensors(node):
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
-                if node.name == "record_param_comms" and self.compute_only:
+                if node.name == "record_param_comms" and self.replay_mode == ReplayMode.COMP:
                     continue
                 self.input_tensor_ids.add(t_id)
 
@@ -435,7 +454,7 @@ class ExgrReplayManager:
             # we take them as the input tensors, and put them in self.input_tensor_ids.
             # So in full_replay, self.input_tensor_ids contains both input tensor ids and
             # the comm nodes' output tensor ids
-            if not self.compute_only:
+            if self.replay_mode != ReplayMode.COMP:
                 for _, t_id, _ in get_output_tensors(node):
                     if self.tensor_with_device:
                         t_id = tuple(list(t_id)[:5])
@@ -443,7 +462,6 @@ class ExgrReplayManager:
                         continue
                     self.input_tensor_ids.add(t_id)
  
-            return True, ""
             if node.name == "record_param_comms":
                 # Node "record_param_comms" is not able to have a func created by self.build_func
                 # but we still want to return success to keep it in self.sorted_nodes
@@ -460,8 +478,11 @@ class ExgrReplayManager:
             if self.profile_step_label in node.name:
                 self.profile_step_node_ids.append(node.id)
             if node.type == NodeType.OPERATOR:
-                if not self.is_skipped(node):
-                    self.sorted_nodes.append(node)
+                if ((self.replay_mode == ReplayMode.FULL) or
+                    (self.replay_mode == ReplayMode.COMP and node.name != "record_param_comms") or 
+                    (self.replay_mode == ReplayMode.COMM and node.name == "record_param_comms")):
+                    if not self.is_skipped(node):
+                        self.sorted_nodes.append(node)
                 return
 
             for child in node.children:
@@ -584,7 +605,7 @@ class ExgrReplayManager:
                 self.special_tensors.add(replay_t_id)
 
         for node in self.sorted_nodes:
-            if node.name == "record_param_comms" and self.compute_only:
+            if node.name == "record_param_comms" and self.replay_mode == ReplayMode.COMP:
                 continue
             for _, t_id, shape in get_input_tensors(node):
                 if self.tensor_with_device:
@@ -625,7 +646,7 @@ class ExgrReplayManager:
         # Simulate the execution progress and record the output tensors we have seen so far.
         output_set = set()
         for node in self.sorted_nodes:
-            if node.name == "record_param_comms" and self.compute_only:
+            if node.name == "record_param_comms" and self.replay_mode == ReplayMode.COMP:
                 continue
             for _, t_id, _ in get_input_tensors(node):
                 if self.tensor_with_device:
@@ -652,7 +673,7 @@ class ExgrReplayManager:
     def allocate_tensors(self):
         start_ns = time.time_ns()
 
-        if not self.compute_only:
+        if self.replay_mode != ReplayMode.COMP:
             for node in self.sorted_nodes:
                 if node.name == "record_param_comms":
                     self.allocate_node_tensors(node, True, True)
@@ -1076,8 +1097,6 @@ class ExgrReplayManager:
                 self.free_tensor_in_storage(t_id[1], node.id)
             return True, ""
         else:
-            return True, ""
-
             # This is a comms node and it is handled by commsBench.replaySingle
             if node.name == "record_param_comms" or node.name.startswith("c10d::"):
                 return True, ""
@@ -1259,7 +1278,7 @@ class ExgrReplayManager:
             self.add_skipped_nodes(node, msg)
 
     def preprocess_graph(self):
-        if not self.compute_only and not self.generator:
+        if self.replay_mode != ReplayMode.COMP and not self.generator:
             self.init_comms()
 
         nodes = self.et.get_nodes(clean=True)
@@ -1331,7 +1350,7 @@ class ExgrReplayManager:
         event_2 = torch.cuda.Event(enable_timing=True)
 
         def run_ops(event_1, event_2, iter):
-            if not self.compute_only:
+            if self.replay_mode != ReplayMode.COMP:
                 self.commsBench.replayIter = iter
             event_1.record()
             for cnt, node in enumerate(self.sorted_nodes):
@@ -1339,7 +1358,7 @@ class ExgrReplayManager:
                 if not success:
                     return False
             event_2.record()
-            if not self.compute_only:
+            if self.replay_mode != ReplayMode.COMP:
                 self.commsBench.resetComms()
                 # make sure all ops are completed
                 with param_profile.paramProfile(
@@ -1349,7 +1368,7 @@ class ExgrReplayManager:
                         self.commsBench.collectiveArgs
                     )
             torch.cuda.synchronize(self.device)
-            if not self.compute_only:
+            if self.replay_mode != ReplayMode.COMP:
                 self.commsBench.backendFuncs.clear_memory(
                     self.commsBench.collectiveArgs
                 )
@@ -1402,7 +1421,7 @@ class ExgrReplayManager:
             et = ExecutionTraceObserver()
             et.register_callback(et_file)
 
-        if not self.compute_only:
+        if self.replay_mode != ReplayMode.COMP:
             # since the comp replay will pick the 2nd iteration nodes, comm replay also needs
             if len(self.profile_step_node_ids) > 1:
                 commNodes = []
@@ -1515,7 +1534,7 @@ class ExgrReplayManager:
                 f"Execution time: 50th:{np.percentile(self.exec_time, 50) / 1000.0}ms\t90th:{np.percentile(self.exec_time, 90) / 1000.0}ms\t95th:{np.percentile(self.exec_time, 95) / 1000.0}ms"
             )
 
-        if not self.compute_only:
+        if self.replay_mode != ReplayMode.COMP:
             self.commsBench.reportBenchTime()
 
         return benchmark_result
@@ -1591,11 +1610,12 @@ class ExgrReplayManager:
             help="File path to read the trace. All rank read their own trace file.",
         )
         parser.add_argument(
-            "-c",
-            "--compute",
-            action="store_true",
-            default=False,
-            help="Replay compute only.",
+            "-m",
+            "--replay-mode",
+            type=str,
+            required=False,
+            default="full",
+            help="Replay mode: full, comp, or comm",
         )
         parser.add_argument(
             "--subgraph",

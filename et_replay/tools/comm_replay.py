@@ -911,6 +911,9 @@ class commsTraceReplayBench(paramCommsBench):
                     self.collectiveArgs.opTensor = None
 
                 # call the collective function
+
+                logger.info(f"SHENGFU run comms {self.collectiveArgs.opTensor_split}")
+                logger.info(f"SHENGFU run comms {self.collectiveArgs.ipTensor_split}")
                 retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True
                 )
@@ -1208,6 +1211,8 @@ class commsTraceReplayBench(paramCommsBench):
                     )
                     self.collectiveArgs.ipTensor_split = curComm.inSplit
                     self.collectiveArgs.opTensor_split = curComm.outSplit
+                    logger.info(f"SHENGFU replay single {self.collectiveArgs.opTensor_split}")
+                    logger.info(f"SHENGFU replay single {self.collectiveArgs.ipTensor_split}")
                 if curComm.comms in supportedP2pOps:
                     commDesc += (
                         f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
