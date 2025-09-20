@@ -62,6 +62,7 @@ from torch._C._distributed_c10d import ProcessGroup  # @manual
 random.seed()
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 default_master_ip = "127.0.0.1"
 default_master_port = "29500"
@@ -929,19 +930,22 @@ class paramCommsBench(ABC):
         # recorded splits in trace is only for dim 0, but tensor in replay has been flattened.
         # need to recalculate the splits for flattened 1D tensor
         # corner case: one rank sends zeor data out, but receives data from other ranks, and vice versa.
-        self.collectiveArgs.opTensor_split = (
-            [
-                numElementsOut // max(sum(curComm.outSplit), 1) * i
-                for i in curComm.outSplit
-            ]
-            if curComm.outSplit
-            else None
-        )
-        self.collectiveArgs.ipTensor_split = (
-            [numElementsIn // max(sum(curComm.inSplit), 1) * i for i in curComm.inSplit]
-            if curComm.inSplit
-            else None
-        )
+
+        # self.collectiveArgs.opTensor_split = (
+        #     [
+        #         numElementsOut // max(sum(curComm.outSplit), 1) * i
+        #         for i in curComm.outSplit
+        #     ]
+        #     if curComm.outSplit
+        #     else None
+        # )
+        # self.collectiveArgs.ipTensor_split = (
+        #     [numElementsIn // max(sum(curComm.inSplit), 1) * i for i in curComm.inSplit]
+        #     if curComm.inSplit
+        #     else None
+        # )
+        self.collectiveArgs.opTensor_split = curComm.outSplit
+        self.collectiveArgs.inTensor_split = curComm.inSplit
         return (ipTensor, opTensor)
 
     def _prep_all_to_all(

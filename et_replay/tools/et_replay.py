@@ -442,7 +442,8 @@ class ExgrReplayManager:
                     if node.name != "record_param_comms":
                         continue
                     self.input_tensor_ids.add(t_id)
-
+ 
+            return True, ""
             if node.name == "record_param_comms":
                 # Node "record_param_comms" is not able to have a func created by self.build_func
                 # but we still want to return success to keep it in self.sorted_nodes
@@ -1075,6 +1076,8 @@ class ExgrReplayManager:
                 self.free_tensor_in_storage(t_id[1], node.id)
             return True, ""
         else:
+            return True, ""
+
             # This is a comms node and it is handled by commsBench.replaySingle
             if node.name == "record_param_comms" or node.name.startswith("c10d::"):
                 return True, ""

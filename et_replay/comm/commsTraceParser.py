@@ -26,7 +26,7 @@ from et_replay.comm.comms_utils import commsArgs
 from et_replay.execution_trace import ExecutionTrace
 
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.INFO)
 
 def parseTrace(
     in_trace: list,

@@ -1206,6 +1206,8 @@ class commsTraceReplayBench(paramCommsBench):
                     commDesc += (
                         f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
                     )
+                    self.collectiveArgs.ipTensor_split = curComm.inSplit
+                    self.collectiveArgs.opTensor_split = curComm.outSplit
                 if curComm.comms in supportedP2pOps:
                     commDesc += (
                         f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
