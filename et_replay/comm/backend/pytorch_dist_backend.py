@@ -349,9 +349,6 @@ class PyTorchDistBackend(BaseBackend):
                     collectiveArgs.ipTensor.dtype
                 )
 
-            
-            logger.info(f"SHENGFU dist backend {collectiveArgs.opTensor_split}")
-            logger.info(f"SHENGFU dist backend {collectiveArgs.ipTensor_split}")
             work = dist.all_to_all_single(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,

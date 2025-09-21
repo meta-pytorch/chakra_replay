@@ -945,7 +945,7 @@ class paramCommsBench(ABC):
         #     else None
         # )
         self.collectiveArgs.opTensor_split = curComm.outSplit
-        self.collectiveArgs.inTensor_split = curComm.inSplit
+        self.collectiveArgs.ipTensor_split = curComm.inSplit
         return (ipTensor, opTensor)
 
     def _prep_all_to_all(
