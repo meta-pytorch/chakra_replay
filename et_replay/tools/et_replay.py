@@ -1071,6 +1071,7 @@ class ExgrReplayManager:
             logger.info(f"free_device_memory Number of allocated tensors: {len(all_tensors)}")
             for t in all_tensors:
                 logger.info(f"{t.shape}")
+            torch.cuda.empty_cache()
             logger.info(f"SHENGFU available memory allocated memory = {self.available_memory} GB")
             logger.info(f"SHENGFU freed memory allocated memory = {torch.cuda.memory_allocated(self.device) / 1024 / 1024 / 1024} GB")
 
@@ -1080,6 +1081,8 @@ class ExgrReplayManager:
             and self.args.device_memory_threshold != 1.0
         ):
             self.free_device_memory()
+        
+        torch.cuda.empty_cache()
         if isinstance(node, commsArgs):
             if self.debug and iter >= self.numWarmupIters:
                 start_ns = time.time_ns()
@@ -1524,7 +1527,7 @@ class ExgrReplayManager:
             ):
                 logger.info(f"{node.id}, {self.op_reserved_mem[node]}")
         logger.info("Replay finished")
-        logger.info(f"Replay time per iteration: {total_time / self.numIters} ms")
+        # logger.info(f"Replay time per iteration: {total_time / self.numIters} ms")
         logger.info(
             f"Operator coverage: {len(self.sorted_nodes)} / {len(self.sorted_nodes) + self.n_skipped_nodes} = {len(self.sorted_nodes) / (len(self.sorted_nodes) + self.n_skipped_nodes)}"
         )
