@@ -996,6 +996,7 @@ class paramCommsBench(ABC):
         allocate: bool = True,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         opTensor = []
+        ipTensor = []
 
         if allocate:
             if commsParams.dcheck == 1:

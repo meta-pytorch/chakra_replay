@@ -763,7 +763,6 @@ class ExgrReplayManager:
                             strides,
                             node.get_input_tensor_range(idx),
                         )
-
                         if (
                             self.tensor_allocate_mode
                             == TensorAllcationMode.PRE_ALLOCATE
@@ -1486,7 +1485,13 @@ class ExgrReplayManager:
                     zoomer_request_callsite="hpc",
                 )
             except ImportError:
-                on_trace_ready = trace_handler
+                rank = self.comms_env_params["global_rank"]
+                def my_trace_handler(prof: any) -> None:
+                    fn = f"/lustre/fsw/portfolios/network/users/shengf/llama4-replay-et/profiling/{rank}.pt.trace.json"
+                    prof.export_chrome_trace(fn)
+                    logger.info(f"Chrome profile trace written to {fn}")
+                on_trace_ready = my_trace_handler
+
             with torch.profiler.profile(
                 activities=[
                     torch.profiler.ProfilerActivity.CPU,

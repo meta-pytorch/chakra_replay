@@ -893,7 +893,6 @@ class commsTraceReplayBench(paramCommsBench):
                     self.collectiveArgs.wait_obj_key = None
 
                 self.collectiveArgs.asyncOp = curComm.asyncOp or self.is_blocking
-                logger.info(f"SHENGFU id = {curComm.id} asyncop = {self.collectiveArgs.asyncOp}")
 
                 # handle point-to-point separately
                 if collName in supportedP2pOps:
