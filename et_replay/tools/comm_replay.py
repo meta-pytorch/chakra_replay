@@ -1725,14 +1725,15 @@ class commsTraceReplayBench(paramCommsBench):
                 # Single file mode: use self.trace_file as is
                 trace_file_path = self.trace_file
             logger.info(f"[Rank-{rank}] reading trace from {trace_file_path}")
-            # Read the json file from local disk
-            # with open(trace_file_path) as f:
-            with (
-                gzip.open(trace_file_path, "rb")
-                if trace_file_path.endswith("gz")
-                else open(trace_file_path)
-            ) as execution_data:
-                self.comms_trace = json.load(execution_data)
+            if os.path.exists(trace_file_path):
+                with open(trace_file_path) as f:
+                    self.comms_trace = json.load(f)
+            elif os.path.exists(trace_file_path+".gz"):
+                with gzip.open(trace_file_path+".gz", "rt") as f:
+                    self.comms_trace = json.load(f)
+            else:
+                logger.error(f"Failed to load trace file {trace_file_path}")
+                exit(1)
 
     def readTrace(self, remotePath: str, rank: int) -> None:
         """

@@ -16,6 +16,7 @@
 
 import argparse
 import gc
+import gzip
 import json
 import logging
 import os
@@ -340,8 +341,15 @@ class ExgrReplayManager:
                         self.initial_skip_node_count = len(self.actual_skip_nodes)
             else:
                 self.trace_file = f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}.json"
-                with open(self.trace_file) as f:
-                    self.et = ExecutionTrace(json.load(f))
+                if os.path.exists(self.trace_file):
+                    with open(self.trace_file) as f:
+                        self.et = ExecutionTrace(json.load(f))
+                elif os.path.exists(self.trace_file+".gz"):
+                    with gzip.open(self.trace_file+".gz", "rt") as f:
+                        self.et = ExecutionTrace(json.load(f))
+                else:
+                    logger.error(f"Failed to load trace file {self.trace_file}")
+                    exit(1)
 
             self.dump_path += f"benchmark_{self.comms_env_params['global_rank']}.py"
 
@@ -1459,12 +1467,8 @@ class ExgrReplayManager:
             else:
                 commNodes = self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]
 
-            # commNodes is a list of commsArgs, since commsArgs also contains node id, it
-            # can be mixed with sorted_nodes and re-sort them by id, this is an example after sort:
-            # (Node 1000(comp op)) -> (Node 1001(name == "record_param_comms")) -> (commsArgs 1001) -> (Node 1002(comp op))
-            # Function run_ops(self, node, iter, cnt) will check the type of the input node, if it is a "Node"
-            # and its name is "record_param_comms", skip it; if it is a "commsArgs", use comm_replay to replay it
-            # TODO: replace the "record_param_comms" node with commsArgs.
+            # Remove "record_param_comms" nodes since they are decoded in commNodes already.
+            self.sorted_nodes = [node for node in self.sorted_nodes  if node.name != "record_param_comms"]
             self.sorted_nodes = self.sorted_nodes + commNodes
             self.sorted_nodes.sort(key=lambda x: x.id)
             self.commsBench.replay_start_time = time.monotonic_ns()
@@ -1477,7 +1481,7 @@ class ExgrReplayManager:
                     export_trace_func,
                 )
 
-                rank = self.comms_env_params["local_rank"]
+                rank = self.comms_env_params["global_rank"]
                 on_trace_ready = export_trace_func(
                     "/tmp",
                     worker_name=f"rank-{rank}",
