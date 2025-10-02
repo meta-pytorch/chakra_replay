@@ -29,7 +29,7 @@ from enum import Enum
 import numpy as np
 import torch
 
-from et_replay.comm import comms_utils, param_profile
+from et_replay.comm import comms_utils, param_profile, profiler_trace_analysis
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
     commsArgs,
@@ -48,7 +48,7 @@ from et_replay.et_replay_utils import (
     TORCH_DTYPES_RNG,
 )
 from et_replay.execution_trace import ExecutionTrace, NodeType
-from et_replay.tools.comm_replay import commsTraceReplayBench
+from et_replay.tools.comm_replay import commsTraceReplayBench, writeCommDetails
 from et_replay.utils import trace_handler
 from torch._C import _cuda_getCurrentRawStream as get_raw_stream
 from torch._inductor.async_compile import AsyncCompile
@@ -151,6 +151,7 @@ class ExgrReplayManager:
         self.trace_file = ""
         self.dump = False
         self.dump_path = ""
+        self.out_path = None
         self.args = None
         # Comms env.
         self.comms_env_params = comms_utils.read_comms_env_vars()
@@ -280,6 +281,7 @@ class ExgrReplayManager:
         self.generator = self.args.generator
         self.dump = self.args.dump
         self.dump_path = self.args.dump_path
+        self.out_path = self.args.output_path
         self.wait_delay = self.args.delay
         self.cpu = self.args.cpu
         self.tf32 = self.args.tf32
@@ -1378,6 +1380,8 @@ class ExgrReplayManager:
 
         logger.info("Start execution... ")
 
+        global_rank = self.comms_env_params["global_rank"]
+
         total_time = 0.0
         event_1 = torch.cuda.Event(enable_timing=True)
         event_2 = torch.cuda.Event(enable_timing=True)
@@ -1481,20 +1485,32 @@ class ExgrReplayManager:
                     export_trace_func,
                 )
 
-                rank = self.comms_env_params["global_rank"]
                 on_trace_ready = export_trace_func(
                     "/tmp",
-                    worker_name=f"rank-{rank}",
+                    worker_name=f"rank-{global_rank}",
                     bucket_name="hpc_traces",
                     zoomer_request_callsite="hpc",
                 )
             except ImportError:
-                rank = self.comms_env_params["global_rank"]
-                def my_trace_handler(prof: any) -> None:
-                    fn = f"/lustre/fsw/portfolios/network/users/shengf/llama4-replay-et/profiling/{rank}.pt.trace.json"
-                    prof.export_chrome_trace(fn)
-                    logger.info(f"Chrome profile trace written to {fn}")
-                on_trace_ready = my_trace_handler
+                def on_trace_ready(p):
+                    if self.out_path is None:
+                        return
+
+                    import pathlib
+
+                    folder_path = os.path.join(self.out_path, "profiler_trace")
+                    try:
+                        pathlib.Path(folder_path).mkdir(parents=True, exist_ok=True)
+                    except PermissionError:
+                        logger.error(
+                            f"Permission denied to create directory {folder_path}"
+                        )
+                    p.export_chrome_trace(
+                        os.path.join(
+                            folder_path,
+                            f"rank-{global_rank}.pt.json",
+                        )
+                    )
 
             with torch.profiler.profile(
                 activities=[
@@ -1514,6 +1530,25 @@ class ExgrReplayManager:
                         break
                     prof.step()
                 benchmark_result["execution finished"] = success
+
+            if global_rank == 0 and self.out_path is not None:
+                # wait until all profiling traces from all ranks are ready
+                trace_dir = os.path.join(self.out_path, "profiler_trace")
+                trace_ready = False
+                start_time = datetime.now()
+                duration = datetime.now() - start_time
+                while not trace_ready and duration.total_seconds() < 60:
+                    trace_ready = True
+                    for r  in range(self.comms_env_params["world_size"]):
+                        if not os.path.exists(os.path.join(trace_dir, f"rank-{r}.pt.json")):
+                            trace_ready = False
+                            break
+                    end_time = datetime.now()
+                    duration = end_time - start_time
+
+                profiler_trace_analysis.analyze_profiler_trace(
+                    trace_dir, self.out_path, False
+                )
         else:
             success = True
             for iter in range(self.numWarmupIters + self.numIters):
@@ -1571,6 +1606,7 @@ class ExgrReplayManager:
 
         if self.replay_mode != ReplayMode.COMP:
             self.commsBench.reportBenchTime()
+            writeCommDetails(self.commsBench.traceWithPerf, folder=os.path.join(self.out_path, "replayed_trace"), rank=global_rank)
 
         return benchmark_result
 
@@ -1599,6 +1635,14 @@ class ExgrReplayManager:
             default=False,
             action="store_true",
             help="Profile memory usage in replay.",
+        )
+        parser.add_argument(
+            "--output-path",
+            type=str,
+            default=self.out_path,
+            nargs="?",
+            const="",
+            help="Path to store profiling data include Kineto trace and collective performance report. (Default: %(default)s)",
         )
         parser.add_argument(
             "--et",

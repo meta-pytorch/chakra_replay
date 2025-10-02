@@ -97,10 +97,13 @@ _busbw_correction_factors_func_tbl: Dict[str, Callable[[int], float]] = {
 # map collective name of event to key string for bw calculation
 _collname_to_busbw_corr_factor_func: Dict[str, Callable[[int], float]] = {
     "allreduce": _busbw_correction_factors_func_tbl["all_reduce"],
+    "allreduce_coalesced": _busbw_correction_factors_func_tbl["all_reduce"],
     "all_gather": _busbw_correction_factors_func_tbl["all_gather"],
     "_allgather_base": _busbw_correction_factors_func_tbl["all_gather"],
+    "allgather_into_tensor_coalesced": _busbw_correction_factors_func_tbl["all_gather"],
     "reduce_scatter": _busbw_correction_factors_func_tbl["reduce_scatter"],
     "_reduce_scatter_base": _busbw_correction_factors_func_tbl["reduce_scatter"],
+    "reduce_scatter_tensor_coalesced": _busbw_correction_factors_func_tbl["reduce_scatter"],
     "all_to_all": _busbw_correction_factors_func_tbl["all_to_all"],
     "all_to_allv": _busbw_correction_factors_func_tbl["all_to_all"],
     "broadcast": _busbw_correction_factors_func_tbl["broadcast"],
@@ -359,7 +362,7 @@ def pick_comm_bw_(trace_data, comm_bw_data):
 
 
 @timer_decorator
-def analyze_profiler_trace(trace_dir: str, report_dir: str):
+def analyze_profiler_trace(trace_dir: str, report_dir: str, save_trace: bool = True):
     """
     Analyse input PyTorch profiler trace (i.e. Kineto trace) and generate report.
 
@@ -371,8 +374,9 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         f'Parse profiler trace from "{trace_dir}" and generate reports to "{report_dir}"'
     )
 
-    processed_trace_dir = os.path.join(report_dir, "profiler_trace_processed")
-    pathlib.Path(processed_trace_dir).mkdir(parents=True, exist_ok=True)
+    if save_trace:
+        processed_trace_dir = os.path.join(report_dir, "profiler_trace_processed")
+        pathlib.Path(processed_trace_dir).mkdir(parents=True, exist_ok=True)
 
     # list of iteration time in all ranks
     iter_e2e_time = []
@@ -394,10 +398,11 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         global_rank = trace["distributedInfo"]["rank"]
         calculate_bw_(trace, global_rank)
 
-        with open(
-            os.path.join(processed_trace_dir, fpath.name), "w", encoding="utf-8"
-        ) as f:
-            json.dump(trace, f)
+        if save_trace:
+            with open(
+                os.path.join(processed_trace_dir, fpath.name), "w", encoding="utf-8"
+            ) as f:
+                json.dump(trace, f)
 
         sbw_lst.append(calculate_sbw(trace, global_rank))
 
@@ -434,18 +439,18 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         )
 
         f.write(
-            f'\n{" ":>86s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
+            f'\n{" ":>100s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
         )
 
         f.write(
-            f'{"kernel":>50s} {"coll":>15s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
+            f'{"kernel":>50s} {"coll":>30s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
         )
         for _ in range(5):  # average, p01, p50, p90, p99
             f.write(f'{" busbw":>8s}|')
         f.write("\n")
 
         f.write(
-            f'{"      ":>66s} {" (B)":>12s} {"    ":>6s}|{"    ":>5s}|{" (us)":>10s} '
+            f'{"      ":>66s} {" (B)":>30s} {"    ":>6s}|{"    ":>5s}|{" (us)":>10s} '
         )
         for _ in range(5):  # average, p50, p90, p99
             f.write(f'{"(GB/s)":>8s}|')
@@ -453,7 +458,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
 
         for k, v in comm_bw_summary.items():
             f.write(
-                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]:>10.3f} "
+                f"{k[0]:>50s} {k[1]:>30s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]:>10.3f} "
             )
             for i in range(2, len(v)):
                 f.write(f"{v[i]:>8.2f}|")
