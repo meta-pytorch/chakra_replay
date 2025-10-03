@@ -433,7 +433,6 @@ class ExgrReplayManager:
                 )
                 for k, v in self.tensor_registry_permanent.items()
             }
-        gc.collect()
         torch.cuda.empty_cache()
 
     def add_skipped_nodes(self, node, reason: str) -> None:
@@ -1066,7 +1065,7 @@ class ExgrReplayManager:
         free_memory = force
         allocated_memory = torch.cuda.memory_allocated(self.device) / 1024 / 1024 / 1024
         reserved_memory = torch.cuda.memory_reserved(self.device) / 1024 / 1024 / 1024
-        logger.info(
+        logger.debug(
             f"allocated_memory = {allocated_memory:.2f}, "
             f"reserved_memory  = {reserved_memory:.2f}, "
             f"available_memory = {self.available_memory:.2f}, "
@@ -1082,14 +1081,8 @@ class ExgrReplayManager:
                 if len(v) > 1:
                     v[1].clear()
             self.tensor_registry.clear()
-            gc.collect()
-            all_tensors = [obj for obj in gc.get_objects() if isinstance(obj, torch.Tensor)]
-            logger.info(f"free_device_memory Number of allocated tensors: {len(all_tensors)}")
-            for t in all_tensors:
-                logger.info(f"{t.shape}")
             torch.cuda.empty_cache()
-            logger.info(f"SHENGFU available memory allocated memory = {self.available_memory} GB")
-            logger.info(f"SHENGFU freed memory allocated memory = {torch.cuda.memory_allocated(self.device) / 1024 / 1024 / 1024} GB")
+            logger.info(f"Device memory freed, allocated memory = {torch.cuda.memory_allocated(self.device) / 1024 / 1024 / 1024} GB")
 
     def run_op(self, node, iter, cnt):  # noqa: C901
         if (
@@ -1098,19 +1091,16 @@ class ExgrReplayManager:
         ):
             self.free_device_memory()
         
-        # torch.cuda.empty_cache()
         if isinstance(node, commsArgs):
-            if self.debug and iter >= self.numWarmupIters:
+            warmup = iter < self.numWarmupIters
+            if self.debug and not warmup:
                 start_ns = time.time_ns()
                 before_execution = start_ns
 
-            self.commsBench.replaySingle(self.commsParams, node, cnt)
-            if self.debug and iter >= self.numWarmupIters:
+            self.commsBench.replaySingle(self.commsParams, node, cnt, warmup)
+            if self.debug and not warmup:
                 after_execution = time.time_ns()
 
-            # Caution: some collectives are running asynchronously, not sure if freeing the tensors immediately
-            # may cause any invalid tensor issue. The best solution is to free the tensors after the "wait"
-            # op of this collective finishes
             et_node = self.et.nodes[node.id]
             for _, t_id, _ in get_input_tensors(et_node) + get_output_tensors(et_node):
                 if self.tensor_with_device:
@@ -1123,10 +1113,6 @@ class ExgrReplayManager:
                     del self.tensor_registry[replay_t_id]
                 self.free_tensor_in_storage(t_id[1], node.id)
 
-            # all_tensors = [obj for obj in gc.get_objects() if isinstance(obj, torch.Tensor)]
-            # logger.info(f"Number of allocated tensors: {len(all_tensors)} after free tensor")
-            # for t in all_tensors:
-            #     logger.info(f"{t.shape}")
             return True, ""
         else:
             # This is a comms node and it is handled by commsBench.replaySingle
@@ -1268,7 +1254,7 @@ class ExgrReplayManager:
         self.commsBench.initBench(self.commsParams, comms_args)
         self.commsBench.replayInit(self.commsParams)
 
-        #DEBUG
+        # DEBUG
         # self.commsBench.is_blocking = True
 
     def remove_op_with_runtime_error(self):
@@ -1394,7 +1380,6 @@ class ExgrReplayManager:
                 success, _ = self.run_op(node, iter, cnt)
                 if not success:
                     return False
-            event_2.record()
             if self.replay_mode != ReplayMode.COMP:
                 self.commsBench.resetComms()
                 # make sure all ops are completed
@@ -1405,12 +1390,11 @@ class ExgrReplayManager:
                         self.commsBench.collectiveArgs
                     )
             torch.cuda.synchronize(self.device)
+            event_2.record()
             if self.replay_mode != ReplayMode.COMP:
-                self.commsBench.backendFuncs.clear_memory(
-                    self.commsBench.collectiveArgs
-                )
-            gc.collect()
-            torch.cuda.empty_cache()
+               self.commsBench.backendFuncs.clear_memory(
+                   self.commsBench.collectiveArgs
+               )
 
             return True
 
@@ -1419,12 +1403,15 @@ class ExgrReplayManager:
 
         prev_iter = self.numWarmupIters
 
-        def run_iter(iter):
+        def run_iter(iter, warmup_iter: bool = False):
             nonlocal prev_iter
             nonlocal qps_print_interval
             nonlocal total_time
-
-            logger.info(f"iteration = {iter}")
+            
+            if warmup_iter:
+                logger.info(f"warm up: iteration = {iter}")
+            else:
+                logger.info(f"iteration = {iter}")
             if self.et_profile:
                 if iter == self.numWarmupIters:
                     et.start()
@@ -1443,9 +1430,7 @@ class ExgrReplayManager:
                 prev_iter = iter
                 start_ns = time.time_ns()
 
-            if self.tensor_allocate_mode == TensorAllcationMode.LAZY_ALLOCATE:
-                self.free_device_memory(force=True)
-            else:
+            if self.tensor_allocate_mode == TensorAllcationMode.PRE_ALLOCATE:
                 self.reset_registry()
             ret = run_ops(event_1, event_2, iter)
             if iter >= self.numWarmupIters:
@@ -1525,7 +1510,7 @@ class ExgrReplayManager:
             ) as prof:
                 success = True
                 for iter in range(self.numWarmupIters + self.numIters):
-                    if not run_iter(iter):
+                    if not run_iter(iter, iter < self.numWarmupIters):
                         success = False
                         break
                     prof.step()
@@ -1552,7 +1537,7 @@ class ExgrReplayManager:
         else:
             success = True
             for iter in range(self.numWarmupIters + self.numIters):
-                if not run_iter(iter):
+                if not run_iter(iter, iter < self.numWarmupIters):
                     success = False
                     break
             benchmark_result["execution finished"] = success
@@ -1578,7 +1563,7 @@ class ExgrReplayManager:
             ):
                 logger.info(f"{node.id}, {self.op_reserved_mem[node]}")
         logger.info("Replay finished")
-        # logger.info(f"Replay time per iteration: {total_time / self.numIters} ms")
+        logger.info(f"Replay time per iteration: {total_time / self.numIters} ms")
         logger.info(
             f"Operator coverage: {len(self.sorted_nodes)} / {len(self.sorted_nodes) + self.n_skipped_nodes} = {len(self.sorted_nodes) / (len(self.sorted_nodes) + self.n_skipped_nodes)}"
         )

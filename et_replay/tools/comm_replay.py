@@ -417,7 +417,7 @@ class commsTraceReplayBench(paramCommsBench):
                 f"+ {len(blockComms)} comms in block {curBlock}: {Lats.sum():.2f} us in total"
             )
 
-        logger.info("\n{} Message size Statistcs {}".format("=" * 20, "=" * 20))
+        print("\n{} Message size Statistcs {}".format("=" * 20, "=" * 20))
 
         for name, collMsgs in self.collInMsgBytes.items():
             # input tensor
@@ -1196,7 +1196,9 @@ class commsTraceReplayBench(paramCommsBench):
                     and curComm.dst_rank != self.backendFuncs.get_global_rank()
                 )
             ):
-                logger.warn(f"Skip collective {collName} id = {curComm.id}")
+                # Do not report if it is 'init' to reduce warning message size
+                if collName != 'init':
+                    logger.warn(f"Skip collective {collName} id = {curComm.id}")
                 return
 
             (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
@@ -1218,7 +1220,7 @@ class commsTraceReplayBench(paramCommsBench):
                         f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
                     )
 
-                logger.info(
+                logger.debug(
                     f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc} id = {curComm.id}"
                 )
             else:
@@ -1274,10 +1276,9 @@ class commsTraceReplayBench(paramCommsBench):
                 curBlocks,
             )
 
-        if self.backendFuncs.get_global_rank() == 0:
-            logger.info(
-                f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} with id={curComm.id} in block [{curBlockStack}]... {global_latency:.2f} us"
-            )
+        logger.debug(
+            f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} with id={curComm.id} in block [{curBlockStack}]... {global_latency:.2f} us"
+        )
 
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:
         """
