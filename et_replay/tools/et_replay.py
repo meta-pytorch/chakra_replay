@@ -1516,31 +1516,26 @@ class ExgrReplayManager:
                     prof.step()
                 benchmark_result["execution finished"] = success
 
-            if global_rank == 0 and self.out_path is not None:
-                # wait until all profiling traces from all ranks are ready
-                trace_dir = os.path.join(self.out_path, "profiler_trace")
-                trace_ready = False
-                start_time = datetime.now()
-                duration = datetime.now() - start_time
-                while not trace_ready and duration.total_seconds() < 60:
-                    trace_ready = True
-                    for r  in range(self.comms_env_params["world_size"]):
-                        if not os.path.exists(os.path.join(trace_dir, f"rank-{r}.pt.json")):
-                            trace_ready = False
-                            break
-                    end_time = datetime.now()
-                    duration = end_time - start_time
+            if self.out_path is not None:
+                profiler_trace_analysis.preprocess_profiler_trace(
+                    os.path.join(self.out_path, "profiler_trace"), global_rank)
+                if global_rank == 0:
+                    # wait until all profiling traces from all ranks are ready
+                    # trace_dir = os.path.join(self.out_path, "profiler_trace")
+                    # trace_ready = False
+                    # start_time = datetime.now()
+                    # duration = datetime.now() - start_time
+                    # while not trace_ready and duration.total_seconds() < 60:
+                    #     trace_ready = True
+                    #     for r  in range(self.comms_env_params["world_size"]):
+                    #         if not os.path.exists(os.path.join(trace_dir, f"rank-{r}.pt.json")):
+                    #             trace_ready = False
+                    #             break
+                    #     end_time = datetime.now()
+                    #     duration = end_time - start_time
 
-                profiler_trace_analysis.analyze_profiler_trace(
-                    trace_dir, self.out_path, False
-                )
-        else:
-            success = True
-            for iter in range(self.numWarmupIters + self.numIters):
-                if not run_iter(iter, iter < self.numWarmupIters):
-                    success = False
-                    break
-            benchmark_result["execution finished"] = success
+                    profiler_trace_analysis.summarize_profiler_trace(
+                        os.path.join(self.out_path, "profiler_trace"), global_rank, self.out_path)
 
         if not benchmark_result["execution finished"]:
             return benchmark_result

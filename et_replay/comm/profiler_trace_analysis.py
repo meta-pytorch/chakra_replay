@@ -360,60 +360,22 @@ def pick_comm_bw_(trace_data, comm_bw_data):
             ]
         )
 
-
-@timer_decorator
-def analyze_profiler_trace(trace_dir: str, report_dir: str, save_trace: bool = True):
-    """
-    Analyse input PyTorch profiler trace (i.e. Kineto trace) and generate report.
-
-    Args:
-        trace_dir (str): dir path of input traces, where trace name should be in "rank-n.json" format.
-        report_dir (str): dir path for generated reports
-    """
-    logger.info(
-        f'Parse profiler trace from "{trace_dir}" and generate reports to "{report_dir}"'
-    )
-
-    if save_trace:
-        processed_trace_dir = os.path.join(report_dir, "profiler_trace_processed")
-        pathlib.Path(processed_trace_dir).mkdir(parents=True, exist_ok=True)
-
-    # list of iteration time in all ranks
-    iter_e2e_time = []
-
-    # list of shared bw
-    sbw_lst = []
-
-    # key is (kernel_name, coll name, data size, ranks count)
-    # value is list of [dur, algbw, busbw, pg]
-    comm_bw_data = defaultdict(list)
-
-    for fpath in os.scandir(trace_dir):
-        if not fpath.is_file():
-            continue
-
-        with open(fpath.path, "r", encoding="utf-8") as f:
-            trace = json.load(f)
-
-        global_rank = trace["distributedInfo"]["rank"]
-        calculate_bw_(trace, global_rank)
-
-        if save_trace:
-            with open(
-                os.path.join(processed_trace_dir, fpath.name), "w", encoding="utf-8"
-            ) as f:
-                json.dump(trace, f)
-
-        sbw_lst.append(calculate_sbw(trace, global_rank))
-
-        pick_iter_e2e_time_(trace, iter_e2e_time)
-        pick_comm_bw_(trace, comm_bw_data)
-
+def save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data):
     comm_bw_summary = {}
     for k, v in comm_bw_data.items():
         t_lst = [i[0] for i in v]
         busbw_lst = [i[2] for i in v]
-        pg_set = {i[3] for i in v if i[3]}
+        pg_set = set()
+        for i in v:
+            if i[3] is None:
+                continue
+            # if pg_set is loaded from JSON file, it is a list
+            # otherwise it is a tuple
+            if isinstance(i[3], list):
+                pg_set.add(tuple(i[3]))
+            else:
+                pg_set.add(i[3])
+
         comm_bw_summary[k] = [
             len(pg_set),
             np.average(t_lst),
@@ -464,6 +426,134 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str, save_trace: bool = T
                 f.write(f"{v[i]:>8.2f}|")
             f.write("\n")
 
+# For large scale run, analyze_profiler_trace takes long time to process the data since 
+# it runs only on rank 0. For example, a 16 rank llama4 run with 10 iterations takes
+# 15 minutes. To imporve it, preprocess_profiler_trace should be run on each rank to 
+# extract the data from the trace on each rank and save it on disk, then call 
+# summarize_profiler_trace on rank 0 to get the report. 
+def preprocess_profiler_trace(trace_dir: str, rank: int):
+    """
+    Analyse input PyTorch profiler trace (i.e. Kineto trace) and save the eatracted data in a file.
+
+    Args:
+        trace_dir (str): dir path of input traces, where trace name should be in "rank-n.json" format.
+        rank (int): the current rank
+    """
+    logger.info(
+        f'Preprocess profiler trace from "{trace_dir}"'
+    )
+
+    # list of iteration time in all ranks
+    iter_e2e_time = []
+
+    # list of shared bw
+    sbw_lst = []
+
+    # key is (kernel_name, coll name, data size, ranks count)
+    # value is list of [dur, algbw, busbw, pg]
+    comm_bw_data = defaultdict(list)
+    
+    trace_fn = os.path.join(trace_dir, f"rank-{rank}.pt.json")
+    with open(trace_fn, "r", encoding="utf-8") as f:
+        trace = json.load(f)
+
+    global_rank = trace["distributedInfo"]["rank"]
+    calculate_bw_(trace, global_rank)
+
+    sbw_lst.append(calculate_sbw(trace, global_rank))
+
+    pick_iter_e2e_time_(trace, iter_e2e_time)
+    pick_comm_bw_(trace, comm_bw_data)
+
+    # json.dump can not have a tuple as the key of a dictionary
+    # convert the key to list first
+    comm_bw_data = {json.dumps(k): v for k, v in comm_bw_data.items()}
+
+    summary = {'iter_e2e_time': iter_e2e_time, 
+               'sbw_lst': sbw_lst,
+               'comm_bw_data': comm_bw_data
+              }
+    logger.info(f"Save summary temp to {trace_fn + ".tmp"}")
+    with open(trace_fn + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(summary, f)
+    
+
+def summarize_profiler_trace(trace_dir: str, rank: int, report_dir: str):
+    # list of iteration time in all ranks
+    iter_e2e_time = []
+
+    # list of shared bw
+    sbw_lst = []
+
+    # key is (kernel_name, coll name, data size, ranks count)
+    # value is list of [dur, algbw, busbw, pg]
+    comm_bw_data = defaultdict(list)
+
+    for fpath in os.scandir(trace_dir):
+        if not fpath.is_file() or not fpath.name.endswith(".tmp"):
+            continue
+        
+        with open(fpath.path, "r", encoding="utf-8") as f:
+            extracted_data = json.load(f)
+
+        sbw_lst.extend(extracted_data['sbw_lst'])
+        iter_e2e_time.extend(extracted_data['iter_e2e_time'])
+        bw_data = extracted_data['comm_bw_data']
+
+        for k, v in bw_data.items():
+            # Convert the key from list to tuple
+            k = tuple(json.loads(k))
+            comm_bw_data[k].extend(v)
+
+    save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data)
+
+@timer_decorator
+def analyze_profiler_trace(trace_dir: str, report_dir: str):
+    """
+    Analyse input PyTorch profiler trace (i.e. Kineto trace) and generate report.
+
+    Args:
+        trace_dir (str): dir path of input traces, where trace name should be in "rank-n.json" format.
+        report_dir (str): dir path for generated reports
+    """
+    logger.info(
+        f'Parse profiler trace from "{trace_dir}" and generate reports to "{report_dir}"'
+    )
+
+    processed_trace_dir = os.path.join(report_dir, "profiler_trace_processed")
+    pathlib.Path(processed_trace_dir).mkdir(parents=True, exist_ok=True)
+
+    # list of iteration time in all ranks
+    iter_e2e_time = []
+
+    # list of shared bw
+    sbw_lst = []
+
+    # key is (kernel_name, coll name, data size, ranks count)
+    # value is list of [dur, algbw, busbw, pg]
+    comm_bw_data = defaultdict(list)
+
+    for fpath in os.scandir(trace_dir):
+        if not fpath.is_file():
+            continue
+
+        with open(fpath.path, "r", encoding="utf-8") as f:
+            trace = json.load(f)
+
+        global_rank = trace["distributedInfo"]["rank"]
+        calculate_bw_(trace, global_rank)
+
+        with open(
+            os.path.join(processed_trace_dir, fpath.name), "w", encoding="utf-8"
+        ) as f:
+            json.dump(trace, f)
+
+        sbw_lst.append(calculate_sbw(trace, global_rank))
+
+        pick_iter_e2e_time_(trace, iter_e2e_time)
+        pick_comm_bw_(trace, comm_bw_data)
+
+    save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data)
 
 def main():
     parser = argparse.ArgumentParser(
