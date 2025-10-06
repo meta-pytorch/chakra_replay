@@ -207,7 +207,11 @@ def _parse_comms_op_node(  # noqa: C901
         if not comm_args.worldSize:
             # if no pg info provided, use total ranks as world size
             comm_args.worldSize = total_ranks
-        if comm_args.comms == "all_to_all":
+        if comm_args.comms in (
+            "all_to_all", 
+            "allgather_into_tensor_coalesced", 
+            "reduce_scatter_tensor_coalesced", 
+            "allreduce_coalesced") :
             # flatten each tensor and store the # of elements into split field
             comm_args.inSplit = [math.prod(i) for i in node.input_shapes[0]]
             comm_args.outSplit = [math.prod(i) for i in node.output_shapes[0]]
