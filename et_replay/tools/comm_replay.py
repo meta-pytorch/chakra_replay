@@ -417,7 +417,7 @@ class commsTraceReplayBench(paramCommsBench):
                 f"+ {len(blockComms)} comms in block {curBlock}: {Lats.sum():.2f} us in total"
             )
 
-        logger.info("\n{} Message size Statistcs {}".format("=" * 20, "=" * 20))
+        print("\n{} Message size Statistcs {}".format("=" * 20, "=" * 20))
 
         for name, collMsgs in self.collInMsgBytes.items():
             # input tensor
@@ -689,9 +689,6 @@ class commsTraceReplayBench(paramCommsBench):
         commsParams: commsParamsHolderBase,
         regenerateTensors: bool,
     ) -> tuple[torch.Tensor, list[torch.Tensor] | torch.Tensor]:
-        # Use exactly specified inMsgSize/outMsgSize if call from trace replay
-        # This avoid regenerating sizes such as in _prep_all_gather_base
-        commsParams.size_from_trace = True
         commsParams.dtype = self.dtypeMap[curComm.dtype]
         if self.data_accuracy_checkmode:
             commsOpHash = curComm.id
@@ -895,6 +892,8 @@ class commsTraceReplayBench(paramCommsBench):
                 else:
                     self.collectiveArgs.wait_obj_key = None
 
+                self.collectiveArgs.asyncOp = curComm.asyncOp or self.is_blocking
+
                 # handle point-to-point separately
                 if collName in supportedP2pOps:
                     self.collectiveArgs.src_rank = curComm.src_rank
@@ -947,16 +946,18 @@ class commsTraceReplayBench(paramCommsBench):
                             f"[Data accuracy]: Rank: {self.backendFuncs.get_global_rank()}: Data accuracy check not passed for {curComm.id} on ReplayIteration: {self.replayIter} "
                         )
 
+                self.collectiveArgs.ipTensor = None
+                self.collectiveArgs.opTensor = None
             else:
                 # skip not supported ops
-                logger.warn(
+                logger.warning(
                     f"Unsupported collective name: {collName}. Skipping replaying the collective"
                 )
                 retObj = None
 
             # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
-            if self.is_blocking:
-                self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+            # if self.is_blocking:
+            #    self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             # if nonblocking, then store the pair {(pg_id, reqID, isP2P), future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
@@ -964,6 +965,7 @@ class commsTraceReplayBench(paramCommsBench):
                 not self.is_blocking
                 and collName != "wait"
                 and self.collectiveArgs.wait_obj_key is not None
+                and self.collectiveArgs.asyncOp is True
             ):
                 self.collectiveArgs.waitObjIds[self.collectiveArgs.wait_obj_key] = (
                     retObj
@@ -1195,7 +1197,9 @@ class commsTraceReplayBench(paramCommsBench):
                     and curComm.dst_rank != self.backendFuncs.get_global_rank()
                 )
             ):
-                logger.warn(f"Skip collective {collName} id = {curComm.id}")
+                # Do not report if it is 'init' to reduce warning message size
+                if collName != 'init':
+                    logger.warn(f"Skip collective {collName} id = {curComm.id}")
                 return
 
             (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
@@ -1210,12 +1214,14 @@ class commsTraceReplayBench(paramCommsBench):
                     commDesc += (
                         f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
                     )
+                    #self.collectiveArgs.ipTensor_split = curComm.inSplit
+                    #self.collectiveArgs.opTensor_split = curComm.outSplit
                 if curComm.comms in supportedP2pOps:
                     commDesc += (
                         f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
                     )
 
-                logger.info(
+                logger.debug(
                     f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc} id = {curComm.id}"
                 )
             else:
@@ -1271,10 +1277,9 @@ class commsTraceReplayBench(paramCommsBench):
                 curBlocks,
             )
 
-        if self.backendFuncs.get_global_rank() == 0:
-            logger.info(
-                f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} with id={curComm.id} in block [{curBlockStack}]... {global_latency:.2f} us"
-            )
+        logger.debug(
+            f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} with id={curComm.id} in block [{curBlockStack}]... {global_latency:.2f} us"
+        )
 
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:
         """
@@ -1610,7 +1615,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.collectiveArgs.srcOrDst = 0
         # FIXME: assuming it's always sum for reduce/allreduce operations
         self.collectiveArgs.op = self.backendFuncs.get_reduce_op("sum")
-        self.collectiveArgs.asyncOp = not self.is_blocking
+        self.collectiveArgs.asyncOp = True
         self.collectiveArgs.ipTensor = None
         self.collectiveArgs.opTensor = None
         self.collectiveArgs.quant_threshold = commsParams.quant_threshold
@@ -1722,14 +1727,15 @@ class commsTraceReplayBench(paramCommsBench):
                 # Single file mode: use self.trace_file as is
                 trace_file_path = self.trace_file
             logger.info(f"[Rank-{rank}] reading trace from {trace_file_path}")
-            # Read the json file from local disk
-            # with open(trace_file_path) as f:
-            with (
-                gzip.open(trace_file_path, "rb")
-                if trace_file_path.endswith("gz")
-                else open(trace_file_path)
-            ) as execution_data:
-                self.comms_trace = json.load(execution_data)
+            if os.path.exists(trace_file_path):
+                with open(trace_file_path) as f:
+                    self.comms_trace = json.load(f)
+            elif os.path.exists(trace_file_path+".gz"):
+                with gzip.open(trace_file_path+".gz", "rt") as f:
+                    self.comms_trace = json.load(f)
+            else:
+                logger.error(f"Failed to load trace file {trace_file_path}")
+                exit(1)
 
     def readTrace(self, remotePath: str, rank: int) -> None:
         """
