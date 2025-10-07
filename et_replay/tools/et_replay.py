@@ -1521,18 +1521,18 @@ class ExgrReplayManager:
                     os.path.join(self.out_path, "profiler_trace"), global_rank)
                 if global_rank == 0:
                     # wait until all profiling traces from all ranks are ready
-                    # trace_dir = os.path.join(self.out_path, "profiler_trace")
-                    # trace_ready = False
-                    # start_time = datetime.now()
-                    # duration = datetime.now() - start_time
-                    # while not trace_ready and duration.total_seconds() < 60:
-                    #     trace_ready = True
-                    #     for r  in range(self.comms_env_params["world_size"]):
-                    #         if not os.path.exists(os.path.join(trace_dir, f"rank-{r}.pt.json")):
-                    #             trace_ready = False
-                    #             break
-                    #     end_time = datetime.now()
-                    #     duration = end_time - start_time
+                    trace_dir = os.path.join(self.out_path, "profiler_trace")
+                    trace_ready = False
+                    start_time = datetime.now()
+                    duration = datetime.now() - start_time
+                    while not trace_ready and duration.total_seconds() < 60:
+                        trace_ready = True
+                        for r  in range(self.comms_env_params["world_size"]):
+                            if not os.path.exists(os.path.join(trace_dir, f"rank-{r}.pt.json.tmp")):
+                                trace_ready = False
+                                break
+                        end_time = datetime.now()
+                        duration = end_time - start_time
 
                     profiler_trace_analysis.summarize_profiler_trace(
                         os.path.join(self.out_path, "profiler_trace"), global_rank, self.out_path)
