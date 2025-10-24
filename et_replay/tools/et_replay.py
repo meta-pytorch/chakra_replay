@@ -1568,8 +1568,12 @@ class ExgrReplayManager:
                 logger.info(f"{node.id}, {self.op_reserved_mem[node]}")
         logger.info("Replay finished")
         logger.info(f"Replay time per iteration: {total_time / self.numIters} ms")
+        if len(self.sorted_nodes) + self.n_skipped_nodes != 0:
+            coverage = len(self.sorted_nodes) / (len(self.sorted_nodes) + self.n_skipped_nodes)
+        else:
+            coverage = 1.0
         logger.info(
-            f"Operator coverage: {len(self.sorted_nodes)} / {len(self.sorted_nodes) + self.n_skipped_nodes} = {len(self.sorted_nodes) / (len(self.sorted_nodes) + self.n_skipped_nodes)}"
+            f"Operator coverage: {len(self.sorted_nodes)} / {len(self.sorted_nodes) + self.n_skipped_nodes} = {coverage}"
         )
         end_time = datetime.now()
 

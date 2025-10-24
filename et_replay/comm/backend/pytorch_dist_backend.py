@@ -1035,7 +1035,38 @@ class PyTorchDistBackend(BaseBackend):
                 ranks=group_ranks, backend=backend
             )
         else:
+            env_enable_sharp = os.getenv("NCCL_COLLNET_ENABLE", 0)
+            logger.debug(f"env_enable_sharp={env_enable_sharp}")
+            if env_enable_sharp == 1:
+                if pg_desc == "DATA_PARALLEL_GROUP_WITH_CP" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP":
+                    # This is PG for all gather
+                    old_SHARP_COLL_JOB_REQUEST_MC = os.getenv("SHARP_COLL_JOB_REQUEST_MC")
+                    old_SHARP_COLL_ALLGATHER_ALG  = os.getenv("SHARP_COLL_ALLGATHER_ALG")
+                    old_SHARP_COLL_ENABLE_SAT     = os.getenv("SHARP_COLL_ENABLE_SAT")
+                    os.setenv("SHARP_COLL_JOB_REQUEST_MC", 1)
+                    os.setenv("SHARP_COLL_ALLGATHER_ALG",  5)
+                    os.setenv("SHARP_COLL_ENABLE_SAT",     0)
+                elif pg_desc == "DATA_PARALLEL_GROUP_WITH_CP_RS" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP_RS":
+                    # This PG for reduce scatter
+                    old_SHARP_COLL_JOB_REQUEST_MC = os.getenv("SHARP_COLL_JOB_REQUEST_MC")
+                    os.setenv("SHARP_COLL_JOB_REQUEST_MC", 0)
+
             pg = dist.new_group(ranks=group_ranks, backend=backend, group_desc=pg_desc)
+
+            if env_enable_sharp == 1:
+                if pg_desc == "DATA_PARALLEL_GROUP_WITH_CP" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP":
+                    # Restore SHARP env. for all gather
+                    if old_SHARP_COLL_JOB_REQUEST_MC is not None:
+                        os.setenv("SHARP_COLL_JOB_REQUEST_MC", old_SHARP_COLL_JOB_REQUEST_MC)
+                    if old_SHARP_COLL_ALLGATHER_ALG is not None:
+                        os.setenv("SHARP_COLL_ALLGATHER_ALG",  old_SHARP_COLL_ALLGATHER_ALG)
+                    if old_SHARP_COLL_ENABLE_SAT is not None:
+                        os.setenv("SHARP_COLL_ENABLE_SAT",     old_SHARP_COLL_ENABLE_SAT)
+                elif pg_desc == "DATA_PARALLEL_GROUP_WITH_CP_RS" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP_RS":
+                    # restore SHARP env. for  reduce scatter
+                    if old_SHARP_COLL_JOB_REQUEST_MC is not None:
+                        os.setenv("SHARP_COLL_JOB_REQUEST_MC", old_SHARP_COLL_JOB_REQUEST_MC)
+
             return pg if pg is not dist.GroupMember.NON_GROUP_MEMBER else None
 
     def tensor_list_to_numpy(self, tensorList):
