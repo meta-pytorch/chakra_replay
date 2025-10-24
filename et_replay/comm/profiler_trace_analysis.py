@@ -476,9 +476,11 @@ def preprocess_profiler_trace(trace_dir: str, rank: int):
     logger.info(f"Save summary temp to {trace_fn + ".tmp"}")
     with open(trace_fn + ".tmp", "w", encoding="utf-8") as f:
         json.dump(summary, f)
+        f.flush()
+        os.fsync(f.fileno())  # ensure data is on disk
     
 
-def summarize_profiler_trace(trace_dir: str, rank: int, report_dir: str):
+def summarize_profiler_trace(trace_dir: str, world_size: int, report_dir: str):   
     # list of iteration time in all ranks
     iter_e2e_time = []
 

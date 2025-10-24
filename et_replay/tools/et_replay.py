@@ -1367,6 +1367,7 @@ class ExgrReplayManager:
         logger.info("Start execution... ")
 
         global_rank = self.comms_env_params["global_rank"]
+        world_size = self.comms_env_params["world_size"]
 
         total_time = 0.0
         event_1 = torch.cuda.Event(enable_timing=True)
@@ -1456,6 +1457,19 @@ class ExgrReplayManager:
             else:
                 commNodes = self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]
 
+            # only replay user picked nodes
+            pickedNodes = []
+            for node in commNodes:
+                if node.req is not None and node.pgId is not None:
+                    if isinstance(node.req, list):
+                        seq_id = node.req[0]
+                    else:
+                        seq_id = node.req
+                    comm_id = (node.pgId, seq_id)
+                    if comm_id == (142,385) or comm_id == (141, 1322):
+                        pickedNodes.append(node)
+            commNodes = pickedNodes
+
             # Remove "record_param_comms" nodes since they are decoded in commNodes already.
             self.sorted_nodes = [node for node in self.sorted_nodes  if node.name != "record_param_comms"]
             self.sorted_nodes = self.sorted_nodes + commNodes
@@ -1523,7 +1537,7 @@ class ExgrReplayManager:
                 self.commsBench.backendFuncs.sayHello()
                 if global_rank == 0:
                     profiler_trace_analysis.summarize_profiler_trace(
-                        os.path.join(self.out_path, "profiler_trace"), global_rank, self.out_path)
+                        os.path.join(self.out_path, "profiler_trace"), world_size, self.out_path)
         else:
             success = True
             for iter in range(self.numWarmupIters + self.numIters):
