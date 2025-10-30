@@ -1466,7 +1466,8 @@ class ExgrReplayManager:
                     else:
                         seq_id = node.req
                     comm_id = (node.pgId, seq_id)
-                    if comm_id == (142,385) or comm_id == (141, 1322):
+                    #if comm_id == (142,385) or comm_id == (141, 1322):
+                    if comm_id == (142,385): # reduce scatter
                         pickedNodes.append(node)
             commNodes = pickedNodes
 
@@ -1750,7 +1751,7 @@ class ExgrReplayManager:
             sys.exit(1)
 
 
-def main():
+def not_main():
     replay_manager = ExgrReplayManager()
     replay_manager.readComputeArgs()
     replay_manager.initBench()
@@ -1762,6 +1763,46 @@ def main():
         logger.info("Replay failed.")
         sys.exit(-1)
 
+def my_main():
+    import torch.distributed as dist
+    import os, sys, logging
+
+    # Initialize the process group (using environment variables set by torchrun/srun)
+    dist.init_process_group(backend="nccl")
+
+    pg = dist.new_group(ranks=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], backend="nccl")
+
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+
+    logger.info(f"Hello from rank {rank} of {world_size} on host {os.uname().nodename}")
+
+    # Each process gets its own local GPU
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
+
+    # Dummy tensor all-reduce (to trigger NCCL/SHARP)
+    #input = torch.ones(20971520, device=device)
+    input = torch.ones(262144, device=device)
+    # split into 16 equal chunks, one per rank
+    chunks = list(input.chunk(16))
+
+    # logger.info(f"Rank {rank}: tensor before reduce_scatter = {chunks}")
+
+    # output must match the shape of one chunk
+    output = torch.empty_like(chunks[0])
+
+    dist.reduce_scatter(
+                    output=output,
+                    input_list=chunks,
+                    group=pg,
+                    op=dist.ReduceOp.SUM,
+                    async_op=True,
+                )  # synchronicity is maintained in runColl
+    # logger.info(f"Rank {rank}: tensor after reduce_scatter = {output.item()}")
+
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
-    main()
+    my_main()

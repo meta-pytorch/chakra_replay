@@ -1036,40 +1036,88 @@ class PyTorchDistBackend(BaseBackend):
             )
         else:
             env_enable_sharp = os.getenv("NCCL_COLLNET_ENABLE", 0)
-            logger.debug(f"env_enable_sharp={env_enable_sharp} pg_desc={pg_desc}")
+            logger.info(f"env_enable_sharp={env_enable_sharp} pg_desc={pg_desc}")
             if env_enable_sharp == '1':
                 logger.info(f"inside enable sharp")
                 if pg_desc == "DATA_PARALLEL_GROUP_WITH_CP" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP":
                     logger.info(f"SHENGFU create PG for all gather")
-                    # This is PG for all gather
-                    old_SHARP_COLL_JOB_REQUEST_MC = os.getenv("SHARP_COLL_JOB_REQUEST_MC")
-                    old_SHARP_COLL_ALLGATHER_ALG  = os.getenv("SHARP_COLL_ALLGATHER_ALG")
-                    old_SHARP_COLL_ENABLE_SAT     = os.getenv("SHARP_COLL_ENABLE_SAT")
-                    os.environ["SHARP_COLL_JOB_REQUEST_MC"]="1"
-                    os.environ["SHARP_COLL_ALLGATHER_ALG" ]="5"
-                    os.environ["SHARP_COLL_ENABLE_SAT"]    ="0"
-                elif pg_desc == "DATA_PARALLEL_GROUP_WITH_CP_RS" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP_RS":
+                    sharp_env_ENABLE_MCAST   = os.getenv("SHARP_COLL_ENABLE_MCAST")
+                    sharp_env_JOB_REQUEST_MC = os.getenv("SHARP_COLL_JOB_REQUEST_MC")
+                    sharp_env_ENABLE_SAT     = os.getenv("SHARP_COLL_ENABLE_SAT")
+                    sharp_env_ALLGATHER_ALG  = os.getenv("SHARP_COLL_ALLGATHER_ALG")
+                    sharp_env_NCCL_ALGO      = os.getenv("NCCL_ALGO")
+
+                    os.environ["SHARP_COLL_ENABLE_MCAST"]   = "1"
+                    os.environ["SHARP_COLL_JOB_REQUEST_MC"] = "1"
+                    os.environ["SHARP_COLL_ENABLE_SAT"]     = "0"
+                    os.environ["SHARP_COLL_ALLGATHER_ALG" ] = "5"
+                    os.environ["NCCL_ALGO"]                 ="collnetdirect" 
+
+                elif pg_desc == "DATA_PARALLEL_GROUP_WITH_CP_RS" or "EXPERT_DATA_PARALLEL_GROUP_RS":
                     # This PG for reduce scatter
                     logger.info(f"SHENGFU create PG for reduce scatter")
-                    old_SHARP_COLL_JOB_REQUEST_MC = os.getenv("SHARP_COLL_JOB_REQUEST_MC")
-                    os.environ["SHARP_COLL_JOB_REQUEST_MC"]="0"
-
+                    sharp_env_ENABLE_MCAST   = os.getenv("SHARP_COLL_ENABLE_MCAST")
+                    sharp_env_JOB_REQUEST_MC = os.getenv("SHARP_COLL_JOB_REQUEST_MC")
+                    sharp_env_ENABLE_SAT     = os.getenv("SHARP_COLL_ENABLE_SAT")
+                    sharp_env_NCCL_ALGO      = os.getenv("NCCL_ALGO")
+                    os.environ["SHARP_COLL_ENABLE_MCAST"]   = "0"
+                    os.environ["SHARP_COLL_JOB_REQUEST_MC"] = "0"
+                    os.environ["SHARP_COLL_ENABLE_SAT"]     = "1"
+                    os.environ["NCCL_ALGO"]                 = "collnetdirect" 
+                    
+            
             pg = dist.new_group(ranks=group_ranks, backend=backend, group_desc=pg_desc)
 
             if env_enable_sharp == '1':
+                device_index = torch.cuda.current_device()
+                device = torch.device("cuda", device_index)
+                world_size = self.bootstrap_info.world_size
                 if pg_desc == "DATA_PARALLEL_GROUP_WITH_CP" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP":
-                    # Restore SHARP env. for all gather
-                    if old_SHARP_COLL_JOB_REQUEST_MC is not None:
-                        os.environ["SHARP_COLL_JOB_REQUEST_MC"]=old_SHARP_COLL_JOB_REQUEST_MC
-                    if old_SHARP_COLL_ALLGATHER_ALG is not None:
-                        os.environ["SHARP_COLL_ALLGATHER_ALG"]=old_SHARP_COLL_ALLGATHER_ALG
-                    if old_SHARP_COLL_ENABLE_SAT is not None:
-                        os.environ["SHARP_COLL_ENABLE_SAT"] = old_SHARP_COLL_ENABLE_SAT
-                elif pg_desc == "DATA_PARALLEL_GROUP_WITH_CP_RS" or pg_desc == "EXPERT_DATA_PARALLEL_GROUP_RS":
-                    # restore SHARP env. for  reduce scatter
-                    if old_SHARP_COLL_JOB_REQUEST_MC is not None:
-                        os.environ["SHARP_COLL_JOB_REQUEST_MC"] = old_SHARP_COLL_JOB_REQUEST_MC
+                    # This PG for all gather
 
+                    # call a dummy all gather to guarantee PG is created
+                    dummy_input_ag  = torch.ones(1, device=device)
+                    dummy_output_ag = [torch.empty_like(dummy_input_ag) for _ in range(world_size)]
+                    dist.all_gather(
+                        dummy_output_ag,
+                        dummy_input_ag,
+                        group=pg,
+                        async_op=True
+                    ) 
+
+                    if sharp_env_ENABLE_MCAST is not None:
+                        os.environ["SHARP_COLL_ENABLE_MCAST"]   = sharp_env_ENABLE_MCAST
+                    if sharp_env_JOB_REQUEST_MC is not None:
+                        os.environ["SHARP_COLL_JOB_REQUEST_MC"] = sharp_env_JOB_REQUEST_MC
+                    if sharp_env_ENABLE_SAT is not None:
+                        os.environ["SHARP_COLL_ENABLE_SAT"]     = sharp_env_ENABLE_SAT
+                    if sharp_env_ALLGATHER_ALG is not None:
+                        os.environ["SHARP_COLL_ALLGATHER_ALG"]  = sharp_env_ALLGATHER_ALG    
+                    if sharp_env_NCCL_ALGO is not None:
+                        os.environ["NCCL_ALGO"]                 = sharp_env_NCCL_ALGO
+                elif pg_desc == "DATA_PARALLEL_GROUP_WITH_CP_RS" or "EXPERT_DATA_PARALLEL_GROUP_RS":
+                    # This PG for reduce scatter
+
+                    # call a dummy reduce scatter to guarantee PG is created
+                    dummy_input_rs = list(torch.ones(world_size, device=device).chunk(world_size))
+                    dummy_output_rs = torch.empty_like(dummy_input_rs[0])
+                    dist.reduce_scatter(
+                        output=dummy_output_rs,
+                        input_list=dummy_input_rs,
+                        group=pg,
+                        op=dist.ReduceOp.SUM,
+                        async_op=True
+                    ) 
+
+                    if sharp_env_ENABLE_MCAST is not None:
+                        os.environ["SHARP_COLL_ENABLE_MCAST"]   = sharp_env_ENABLE_MCAST
+                    if sharp_env_JOB_REQUEST_MC is not None:
+                        os.environ["SHARP_COLL_JOB_REQUEST_MC"] = sharp_env_JOB_REQUEST_MC
+                    if sharp_env_ENABLE_SAT is not None:
+                        os.environ["SHARP_COLL_ENABLE_SAT"]     = sharp_env_ENABLE_SAT
+                    if sharp_env_NCCL_ALGO is not None:
+                        os.environ["NCCL_ALGO"]                 = sharp_env_NCCL_ALGO
+                    
             return pg if pg is not dist.GroupMember.NON_GROUP_MEMBER else None
 
     def tensor_list_to_numpy(self, tensorList):
@@ -1109,6 +1157,9 @@ class PyTorchDistBackend(BaseBackend):
             )
 
         if not dist.is_initialized():
+            saved_env = os.getenv("NCCL_COLLNET_ENABLE")
+            # disable SHARP for the default PG
+            os.environ["NCCL_COLLNET_ENABLE"] = "0"
             # init default process group if not yet initialized or extend_distributed failed or is disabled
             dist.init_process_group(
                 backend,
@@ -1122,6 +1173,13 @@ class PyTorchDistBackend(BaseBackend):
                     else None
                 ),
             )
+            # Guarantee PG is created by calling a dummy all reduce
+            device_index = torch.cuda.current_device()
+            device = torch.device("cuda", device_index)
+            dummy = torch.zeros(1, device=device)
+            dist.all_reduce(dummy, op=dist.ReduceOp.SUM, async_op=True)
+            if saved_env is not None:
+                os.environ["NCCL_COLLNET_ENABLE"] = saved_env
 
         # default 1 group, maybe overwritten by user created groups via initialize_groups
         self.groups = {}
