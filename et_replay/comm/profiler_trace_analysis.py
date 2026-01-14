@@ -448,7 +448,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         f.write("\n")
 
         f.write(
-            f"{'      ':>66s} {' (B)':>12s} {'    ':>6s}|{'    ':>5s}|{' (ms)':>10s} "
+            f"{'      ':>66s} {' (B)':>12s} {'    ':>6s}|{'    ':>5s}|{' (us)':>10s} "
         )
         for _ in range(5):  # average, p50, p90, p99
             f.write(f"{'(GB/s)':>8s}|")
