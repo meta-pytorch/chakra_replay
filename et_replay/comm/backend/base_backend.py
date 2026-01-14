@@ -177,7 +177,6 @@ class BaseBackend(ABC):
             ipTensor = ipTensor * scaleFactor
         return ipTensor
 
-    @abstractmethod
     def noop(
         self,
         collectiveArgs: collectiveArgsHolder,
@@ -185,6 +184,7 @@ class BaseBackend(ABC):
         pair: bool = False,
     ) -> None:
         """no-op for the case we want to skip comms/compute"""
+        pass
 
     @abstractmethod
     def sayHello(

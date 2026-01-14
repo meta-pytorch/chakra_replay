@@ -59,6 +59,12 @@ from torch.profiler import ExecutionTraceObserver
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 class CommsReplayManager(commsTraceReplayBench):  # pyre-ignore[13]:
@@ -1330,7 +1336,6 @@ class ExgrReplayManager:
             else:
                 benchmark_result["execution finished"] = True
             return benchmark_result
-
         logger.info("Start execution... ")
 
         total_time = 0.0

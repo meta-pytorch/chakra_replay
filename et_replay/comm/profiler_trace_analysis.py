@@ -21,7 +21,7 @@ import os
 import pathlib
 import time
 from collections import defaultdict
-from typing import Any, Callable, dict
+from typing import Any, Callable
 
 import numpy as np
 from intervaltree import Interval, IntervalTree
