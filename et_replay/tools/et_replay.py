@@ -59,6 +59,7 @@ from torch.profiler import ExecutionTraceObserver
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+logger.propagate = False 
 handler = logging.StreamHandler()
 formatter = logging.Formatter(
     "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
@@ -1240,7 +1241,7 @@ class ExgrReplayManager:
 
         self.commsBench = CommsReplayManager()
         self.commsBench.comp_replay_manager = self
-        self.commsBench.trace_file = self.args.trace_path
+        self.commsBench.trace_files = [self.args.trace_path]
         if "://" in self.trace_file:
             self.commsBench.use_remote_trace = True
 
@@ -1593,10 +1594,7 @@ class ExgrReplayManager:
         else:
             coverage = 1.0
         logger.info(
-            "Operator coverage: %f / %f = %f",
-            len(self.sorted_nodes),
-            len(self.sorted_nodes) + self.n_skipped_nodes,
-            coverage),
+            "Operator coverage: = %f", coverage
         )
         end_time = datetime.now()
 
