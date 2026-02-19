@@ -228,37 +228,37 @@ def _parse_comms_op_node(  # noqa: C901
 
         comms_op_list.append(comm_args)
 
-    # # Create a set of all wait ops
-    # wait_ops = set()
-    # for comm_args in comms_op_list:
-    #     if comm_args.comms == "wait":
-    #         if isinstance(comm_args.req, list):
-    #             seq_id = comm_args.req[0]
-    #             is_p2p_op = comm_args.req[1]
-    #         else:
-    #             seq_id = comm_args.req
-    #             is_p2p_op = False
-    #         wait_ops.add((comm_args.pgId, seq_id, is_p2p_op))
-
-    # # check if an collective is a synchronized collective or not based on 
-    # # if there is a wait op for that collective
-    # for comm_args in comms_op_list:
-    #     if comm_args.comms == "wait":
-    #         comm_args.asyncOp = False
-    #         continue
-    #     if isinstance(comm_args.req, list):
-    #         seq_id = comm_args.req[0]
-    #         is_p2p_op = comm_args.req[1]
-    #     else:
-    #         seq_id = comm_args.req
-    #         is_p2p_op = False
-
-    #     if (comm_args.pgId, seq_id, is_p2p_op) in wait_ops:
-    #         comm_args.asyncOp = True
-    #     else:
-    #         comm_args.asyncOp = False
+    # TODO: remove the following code after https://github.com/pytorch/pytorch/pull/169416 is landed.
+    
+    # Create a set of all wait ops
+    wait_ops = set()
     for comm_args in comms_op_list:
-        comm_args.asyncOp = True
+        if comm_args.comms == "wait":
+            if isinstance(comm_args.req, list):
+                seq_id = comm_args.req[0]
+                is_p2p_op = comm_args.req[1]
+            else:
+                seq_id = comm_args.req
+                is_p2p_op = False
+            wait_ops.add((comm_args.pgId, seq_id, is_p2p_op))
+
+    # check if an collective is a synchronized collective or not based on 
+    # if there is a wait op for that collective
+    for comm_args in comms_op_list:
+        if comm_args.comms == "wait":
+            comm_args.asyncOp = False
+            continue
+        if isinstance(comm_args.req, list):
+            seq_id = comm_args.req[0]
+            is_p2p_op = comm_args.req[1]
+        else:
+            seq_id = comm_args.req
+            is_p2p_op = False
+
+        if (comm_args.pgId, seq_id, is_p2p_op) in wait_ops:
+            comm_args.asyncOp = True
+        else:
+            comm_args.asyncOp = False
 
     return comms_op_list
 

@@ -48,7 +48,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-logger.propagate = False  # avoid duplicate logs when root is configured by basicConfig (e.g. in comms_utils)
+logger.propagate = False
 handler = logging.StreamHandler()
 formatter = logging.Formatter(
     "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
@@ -998,7 +998,7 @@ class commsTraceReplayBench(paramCommsBench):
                 else:
                     self.collectiveArgs.wait_obj_key = None
 
-                self.collectiveArgs.asyncOp = curComm.asyncOp or self.is_blocking
+                self.collectiveArgs.asyncOp = curComm.asyncOp
 
                 # handle point-to-point separately
                 if collName in supportedP2pOps:
@@ -1075,10 +1075,6 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
                 retObj = None
-
-            # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
-            # if self.is_blocking:
-            #    self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             # if nonblocking, then store the pair {(pg_id, reqID, isP2P), future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
