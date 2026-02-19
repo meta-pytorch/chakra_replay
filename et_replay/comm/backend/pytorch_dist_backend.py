@@ -116,9 +116,6 @@ class PyTorchDistBackend(BaseBackend):
     def store_set(self, key, val):
         self.tcp_store.set(key, val)
 
-    def store_wait(self, key):
-        return self.tcp_store.wait([key])
-
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False, pair=False):
         collectiveArgs.opTensor = collectiveArgs.ipTensor
