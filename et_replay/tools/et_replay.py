@@ -1270,9 +1270,6 @@ class ExgrReplayManager:
         self.commsBench.initBench(self.commsParams, comms_args)
         self.commsBench.replayInit(self.commsParams)
 
-        # DEBUG
-        # self.commsBench.is_blocking = True
-
     def remove_op_with_runtime_error(self):
         for cnt, node in enumerate(self.sorted_nodes):
             success, msg = self.run_op(node, 0, cnt)
@@ -1479,21 +1476,12 @@ class ExgrReplayManager:
             else:
                 commNodes = self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]
 
-            # only replay user picked nodes
-            # pickedNodes = []
-            # for node in commNodes:
-            #     if node.req is not None and node.pgId is not None:
-            #         if isinstance(node.req, list):
-            #             seq_id = node.req[0]
-            #         else:
-            #             seq_id = node.req
-            #         comm_id = (node.pgId, seq_id)
-            #         #if comm_id == (142,385) or comm_id == (141, 1322):
-            #         if comm_id == (142,385): # reduce scatter
-            #             pickedNodes.append(node)
-            # commNodes = pickedNodes
-
-            # Remove "record_param_comms" nodes since they are decoded in commNodes already.
+            # commNodes is a list of commsArgs, since commsArgs also contains node id, it
+            # can be mixed with sorted_nodes and re-sort them by id, this is an example after sort:
+            # (Node 1000(comp op)) -> (Node 1001(name == "record_param_comms")) -> (commsArgs 1001) -> (Node 1002(comp op))
+            # Function run_ops(self, node, iter, cnt) will check the type of the input node, if it is a "Node"
+            # and its name is "record_param_comms", skip it; if it is a "commsArgs", use comm_replay to replay it
+            # TODO: replace the "record_param_comms" node with commsArgs.
             self.sorted_nodes = [node for node in self.sorted_nodes  if node.name != "record_param_comms"]
             self.sorted_nodes = self.sorted_nodes + commNodes
             self.sorted_nodes.sort(key=lambda x: x.id)
@@ -1530,7 +1518,7 @@ class ExgrReplayManager:
                     p.export_chrome_trace(
                         os.path.join(
                             folder_path,
-                            f"rank-{global_rank}.pt.json",
+                            f"rank-{global_rank}.pt.json.gz",
                         )
                     )
 
