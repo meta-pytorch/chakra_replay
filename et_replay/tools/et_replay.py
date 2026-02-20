@@ -1075,10 +1075,12 @@ class ExgrReplayManager:
         allocated_memory = torch.cuda.memory_allocated(self.device) / 1024 / 1024 / 1024
         reserved_memory = torch.cuda.memory_reserved(self.device) / 1024 / 1024 / 1024
         logger.debug(
-            f"allocated_memory = {allocated_memory:.2f}, "
-            f"reserved_memory  = {reserved_memory:.2f}, "
-            f"available_memory = {self.available_memory:.2f}, "
-            f"used = {allocated_memory / self.available_memory:.2%}"
+            "allocated_memory = %.2f, reserved_memory = %.2f, "
+            "available_memory = %.2f, used = %.2f%%",
+            allocated_memory,
+            reserved_memory,
+            self.available_memory,
+            allocated_memory / self.available_memory * 100,
         )
 
         if allocated_memory / self.available_memory > self.args.device_memory_threshold:
