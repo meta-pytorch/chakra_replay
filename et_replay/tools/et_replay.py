@@ -789,7 +789,7 @@ class ExgrReplayManager:
                         else:
                             self.tensor_registry[replay_t_id] = tensor
                 except Exception as e:
-                    logger.info(f"SHENGFU node id = %d is_input = %d %s", node.id, is_input, e)
+                    logger.info(f"allocate tensor failed for node id = %d, error: %s", node.id, e)
                     if self.tensor_allocate_mode == TensorAllcationMode.PRE_ALLOCATE:
                         self.tensor_registry_permanent[replay_t_id] = None
                     else:
