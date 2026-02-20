@@ -49,7 +49,6 @@ from et_replay.et_replay_utils import (
 )
 from et_replay.execution_trace import ExecutionTrace, NodeType
 from et_replay.tools.comm_replay import commsTraceReplayBench, writeCommDetails
-from et_replay.utils import trace_handler
 from torch._C import _cuda_getCurrentRawStream as get_raw_stream
 from torch._inductor.async_compile import AsyncCompile
 
@@ -1622,7 +1621,6 @@ class ExgrReplayManager:
             )
 
         if self.replay_mode != ReplayMode.COMP:
-            self.commsBench.reportBenchTime()
             if self.out_path is not None:
                 writeCommDetails(self.commsBench.traceWithPerf, folder=os.path.join(self.out_path, "replayed_trace"), rank=global_rank)
 

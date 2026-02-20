@@ -401,18 +401,18 @@ def save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data):
         )
 
         f.write(
-            f'\n{" ":>100s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
+            f'\n{" ":>106s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
         )
 
         f.write(
-            f'{"kernel":>50s} {"coll":>30s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
+            f'{"kernel":>50s} {"coll":>35s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
         )
         for _ in range(5):  # average, p01, p50, p90, p99
             f.write(f'{" busbw":>8s}|')
         f.write("\n")
 
         f.write(
-            f'{"      ":>66s} {" (B)":>30s} {"    ":>6s}|{"    ":>5s}|{" (us)":>10s} '
+            f'{" (B)":>99s} {"    ":>6s}|{"    ":>5s}|{" (us)":>10s} '
         )
         for _ in range(5):  # average, p50, p90, p99
             f.write(f'{"(GB/s)":>8s}|')
@@ -420,7 +420,7 @@ def save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data):
 
         for k, v in comm_bw_summary.items():
             f.write(
-                f"{k[0]:>50s} {k[1]:>30s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]:>10.3f} "
+                f"{k[0]:>50s} {k[1]:>35s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]:>10.3f} "
             )
             for i in range(2, len(v)):
                 f.write(f"{v[i]:>8.2f}|")
