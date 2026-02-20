@@ -197,7 +197,7 @@ class BaseBackend(ABC):
     ) -> None:
         """Print startup information of the backend."""
 
-    # Collectives, if you would like more detailed documentation about the behavior of these collectives, 
+    # Collectives, if you would like more detailed documentation about the behavior of these collectives,
     # visit https://pytorch.org/docs/stable/_modules/torch/distributed/distributed_c10d.html.
     @abstractmethod
     def allgather_into_tensor_coalesced(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):

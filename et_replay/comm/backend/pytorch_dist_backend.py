@@ -108,7 +108,7 @@ class PyTorchDistBackend(BaseBackend):
         if global_rank == 0:
             for rank in range(0, world_size):
                 rank_hello_msg = self.store_get(f"hello_msg_{rank}").decode()
-                logger.info(f"Hello from Rank %d: %s", rank, rank_hello_msg)
+                logger.info("Hello from Rank %d: %s", rank, rank_hello_msg)
 
     def store_get(self, key):
         return self.tcp_store.get(key)
@@ -1041,7 +1041,7 @@ class PyTorchDistBackend(BaseBackend):
                 ranks=group_ranks, backend=backend
             )
         else:
-            pg = dist.new_group(ranks=group_ranks, backend=backend, group_desc=pg_desc)          
+            pg = dist.new_group(ranks=group_ranks, backend=backend, group_desc=pg_desc)
             return pg if pg is not dist.GroupMember.NON_GROUP_MEMBER else None
 
     def tensor_list_to_numpy(self, tensorList):
@@ -1081,9 +1081,6 @@ class PyTorchDistBackend(BaseBackend):
             )
 
         if not dist.is_initialized():
-            saved_env = os.getenv("NCCL_COLLNET_ENABLE")
-            # disable SHARP for the default PG
-            os.environ["NCCL_COLLNET_ENABLE"] = "0"
             # init default process group if not yet initialized or extend_distributed failed or is disabled
             dist.init_process_group(
                 backend,
@@ -1097,13 +1094,6 @@ class PyTorchDistBackend(BaseBackend):
                     else None
                 ),
             )
-            # Guarantee PG is created by calling a dummy all reduce
-            device_index = torch.cuda.current_device()
-            device = torch.device("cuda", device_index)
-            dummy = torch.zeros(1, device=device)
-            dist.all_reduce(dummy, op=dist.ReduceOp.SUM, async_op=False)
-            if saved_env is not None:
-                os.environ["NCCL_COLLNET_ENABLE"] = saved_env
 
         # default 1 group, maybe overwritten by user created groups via initialize_groups
         self.groups = {}
