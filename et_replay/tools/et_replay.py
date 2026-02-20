@@ -1093,7 +1093,8 @@ class ExgrReplayManager:
                     v[1].clear()
             self.tensor_registry.clear()
             torch.cuda.empty_cache()
-            logger.info(f"Device memory freed, allocated memory = {torch.cuda.memory_allocated(self.device) / 1024 / 1024 / 1024} GB")
+            logger.info("Device memory freed, allocated memory = %s GB",
+                torch.cuda.memory_allocated(self.device) / 1024 / 1024 / 1024)
 
     def run_op(self, node, iter, cnt):  # noqa: C901
         if (
