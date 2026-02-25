@@ -211,7 +211,7 @@ class PyTorchDistBackend(BaseBackend):
             all_reduce_opts.asyncOp = collectiveArgs.asyncOp
 
             retObj = group.allreduce_coalesced(quantized, all_reduce_opts)
-            
+
         if (id(quantized) != id(collectiveArgs.ipTensor)) and not pair:
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
@@ -227,7 +227,7 @@ class PyTorchDistBackend(BaseBackend):
 
         if retFlag:
             return retObj
-        
+
     def reduce(self, collectiveArgs, retFlag=False, pair=False):
         # pair=True mode does not support quantization
         if collectiveArgs.reduce_qcomm != 32 and not pair:
@@ -431,7 +431,7 @@ class PyTorchDistBackend(BaseBackend):
 
         if retFlag:
             return retObj
-        
+
     def gather(self, collectiveArgs, retFlag=False, pair=False):
         if pair:
             ipTensors = collectiveArgs.ipTensor_pair
@@ -555,7 +555,7 @@ class PyTorchDistBackend(BaseBackend):
 
         if retFlag:
             return retObj
-        
+
     def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
         if pair:
             ipTensor = collectiveArgs.ipTensor_pair
