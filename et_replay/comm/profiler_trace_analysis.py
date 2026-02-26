@@ -453,7 +453,7 @@ def preprocess_profiler_trace(trace_dir: str, rank: int):
     # value is list of [dur, algbw, busbw, pg]
     comm_bw_data = defaultdict(list)
     
-    trace_fn = os.path.join(trace_dir, f"rank-{rank}.pt.json")
+    trace_fn = os.path.join(trace_dir, f"rank-{rank}.pt.json.gz")
     with open(trace_fn, "r", encoding="utf-8") as f:
         trace = json.load(f)
 

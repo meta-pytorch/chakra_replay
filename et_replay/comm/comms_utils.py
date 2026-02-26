@@ -949,22 +949,9 @@ class paramCommsBench(ABC):
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
-        # recorded splits in trace is only for dim 0, but tensor in replay has been flattened.
-        # need to recalculate the splits for flattened 1D tensor
-        # corner case: one rank sends zero data out, but receives data from other ranks, and vice versa.
-        self.collectiveArgs.opTensor_split = (
-            [
-                numElementsOut // max(sum(curComm.outSplit), 1) * i
-                for i in curComm.outSplit
-            ]
-            if curComm.outSplit
-            else None
-        )
-        self.collectiveArgs.ipTensor_split = (
-            [numElementsIn // max(sum(curComm.inSplit), 1) * i for i in curComm.inSplit]
-            if curComm.inSplit
-            else None
-        )
+        self.collectiveArgs.opTensor_split = curComm.outSplit
+        self.collectiveArgs.ipTensor_split = curComm.inSplit
+
         return (ipTensor, opTensor)
 
     def _prep_all_to_all(
