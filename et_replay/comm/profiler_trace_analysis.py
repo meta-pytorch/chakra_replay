@@ -15,6 +15,7 @@
 import argparse
 import ast
 import functools
+import gzip
 import json
 import logging
 import os
@@ -454,7 +455,7 @@ def preprocess_profiler_trace(trace_dir: str, rank: int):
     comm_bw_data = defaultdict(list)
     
     trace_fn = os.path.join(trace_dir, f"rank-{rank}.pt.json.gz")
-    with open(trace_fn, "r", encoding="utf-8") as f:
+    with gzip.open(trace_fn, "rt") as f:
         trace = json.load(f)
 
     global_rank = trace["distributedInfo"]["rank"]
