@@ -427,11 +427,11 @@ def save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data):
                 f.write(f"{v[i]:>8.2f}|")
             f.write("\n")
 
-# For large scale run, analyze_profiler_trace takes long time to process the data since 
+# For large scale run, analyze_profiler_trace takes long time to process the data since
 # it runs only on rank 0. For example, a 16 rank llama4 run with 10 iterations takes
-# 15 minutes. To imporve it, preprocess_profiler_trace should be run on each rank to 
-# extract the data from the trace on each rank and save it on disk, then call 
-# summarize_profiler_trace on rank 0 to get the report. 
+# 15 minutes. To imporve it, preprocess_profiler_trace should be run on each rank to
+# extract the data from the trace on each rank and save it on disk, then call
+# summarize_profiler_trace on rank 0 to get the report.
 def preprocess_profiler_trace(trace_dir: str, rank: int):
     """
     Analyse input PyTorch profiler trace (i.e. Kineto trace) and save the eatracted data in a file.
@@ -453,7 +453,7 @@ def preprocess_profiler_trace(trace_dir: str, rank: int):
     # key is (kernel_name, coll name, data size, ranks count)
     # value is list of [dur, algbw, busbw, pg]
     comm_bw_data = defaultdict(list)
-    
+
     trace_fn = os.path.join(trace_dir, f"rank-{rank}.pt.json.gz")
     with gzip.open(trace_fn, "rt") as f:
         trace = json.load(f)
@@ -470,7 +470,7 @@ def preprocess_profiler_trace(trace_dir: str, rank: int):
     # convert the key to list first
     comm_bw_data = {json.dumps(k): v for k, v in comm_bw_data.items()}
 
-    summary = {'iter_e2e_time': iter_e2e_time, 
+    summary = {'iter_e2e_time': iter_e2e_time,
                'sbw_lst': sbw_lst,
                'comm_bw_data': comm_bw_data
               }
@@ -479,9 +479,9 @@ def preprocess_profiler_trace(trace_dir: str, rank: int):
         json.dump(summary, f)
         f.flush()
         os.fsync(f.fileno())  # ensure data is on disk
-    
 
-def summarize_profiler_trace(trace_dir: str, world_size: int, report_dir: str):   
+
+def summarize_profiler_trace(trace_dir: str, world_size: int, report_dir: str):
     # list of iteration time in all ranks
     iter_e2e_time = []
 
@@ -495,8 +495,8 @@ def summarize_profiler_trace(trace_dir: str, world_size: int, report_dir: str):
     for fpath in os.scandir(trace_dir):
         if not fpath.is_file() or not fpath.name.endswith(".tmp"):
             continue
-        
-        with open(fpath.path, "r", encoding="utf-8") as f:
+
+        with open(fpath.path, encoding="utf-8") as f:
             extracted_data = json.load(f)
 
         sbw_lst.extend(extracted_data['sbw_lst'])
