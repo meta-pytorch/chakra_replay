@@ -309,8 +309,15 @@ class ExgrReplayManager:
                     self.et = ExecutionTrace(json.load(et))
             else:
                 self.trace_file = self.args.input
-                with open(self.trace_file) as f:
-                    self.et = ExecutionTrace(json.load(f))
+                if self.trace_file.endswith(".json"):
+                    with open(self.trace_file) as f:
+                        self.et = ExecutionTrace(json.load(f))
+                elif self.trace_file.endswith(".json.gz"):
+                    with gzip.open(self.trace_file, "rt") as f:
+                        self.et = ExecutionTrace(json.load(f))
+                else:
+                    logger.error(f"Failed to load trace file {self.trace_file}, only .json and .json.gz are supported")
+                    exit(1)
 
             if self.cuda_id == -1:
                 self.cuda = "cuda"
@@ -1404,8 +1411,9 @@ class ExgrReplayManager:
                     self.commsBench.backendFuncs.sync_barrier(
                         self.commsBench.collectiveArgs
                     )
-            torch.cuda.synchronize(self.device)
+            
             event_2.record()
+            torch.cuda.synchronize(self.device)
             if self.replay_mode != ReplayMode.COMP:
                self.commsBench.backendFuncs.clear_memory(
                    self.commsBench.collectiveArgs
@@ -1552,7 +1560,7 @@ class ExgrReplayManager:
         else:
             success = True
             for iter in range(self.numWarmupIters + self.numIters):
-                if not run_iter(iter):
+                if not run_iter(iter, iter < self.numWarmupIters):
                     success = False
                     break
             benchmark_result["execution finished"] = success
