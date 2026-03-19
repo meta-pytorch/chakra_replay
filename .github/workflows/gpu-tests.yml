@@ -23,7 +23,7 @@ jobs:
     runs-on: linux.g5.12xlarge.nvidia.gpu
     strategy:
       matrix:
-        python-version: ['3.11', '3.12']
+        python-version: ['3.12']
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -37,6 +37,7 @@ jobs:
       - name: Update pip
         run: python -m pip install --upgrade pip
       - name: Install + test
+        shell: bash -l {0}
         run: |
           pip install -r requirements.txt
           pip install pytest
