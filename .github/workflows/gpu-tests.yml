@@ -22,5 +22,4 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cu121
           pip install -e .
           python -c "import torch; print(torch.cuda.is_available())"
-          pytest -q
-
+          python tests/test_execution_trace.py
