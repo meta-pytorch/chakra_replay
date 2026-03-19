@@ -1,0 +1,26 @@
+# .github/workflows/gpu-tests.yml
+name: gpu-tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: 4-core-ubuntu-gpu-t4
+    steps:
+      - uses: actions/checkout@v4
+      # Avoid actions/setup-python pitfalls on non-Ubuntu images; conda/mamba is safer
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: ci
+          create-args: python=3.12 pip
+          cache-environment: true
+      - name: Install + test
+        shell: bash -l {0}
+        run: |
+          pip install -r requirements.txt
+          pip install torch --index-url https://download.pytorch.org/whl/cu121
+          pip install -e .
+          python -c "import torch; print(torch.cuda.is_available())"
+          pytest -q
+
