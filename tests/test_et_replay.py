@@ -50,8 +50,12 @@ class ETReplayIntegrationTest(unittest.TestCase):
             self.skipTest("Test machine does not have cuda")
 
     def test_et_replay_integration_test(self) -> None:
+        is_sm80 = torch.cuda.get_device_capability(0) == (8, 0)
         full_path_et_test_files = get_et_files()
         for f in full_path_et_test_files:
+            if "pt2_et.json" in f and not is_sm80:
+                print(f"\n\nSkipping {f} (requires A100/SM80 GPU)")
+                continue
             print(f"\n\nRunning {f}")
             replay_manager = ExgrReplayManager()
             replay_manager.readComputeArgs(check_args=False)
