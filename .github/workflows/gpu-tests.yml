@@ -4,19 +4,39 @@ on:
   pull_request:
   push:
     branches: [main]
+
+concurrency:
+  group: gpu-test-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash -l -eo pipefail {0}
+
 jobs:
-  test:
-    runs-on: 4-core-ubuntu-gpu-t4
+  gpu_test:
+    if: github.repository_owner == 'meta-pytorch'
+    runs-on: linux.g5.12xlarge.nvidia.gpu
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
     steps:
-      - uses: actions/checkout@v4
-      # Avoid actions/setup-python pitfalls on non-Ubuntu images; conda/mamba is safer
-      - uses: mamba-org/setup-micromamba@v2
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Setup conda env
+        uses: conda-incubator/setup-miniconda@v2
         with:
-          environment-name: ci
-          create-args: python=3.12 pip
-          cache-environment: true
+          auto-update-conda: true
+          miniconda-version: "latest"
+          activate-environment: test
+          python-version: ${{ matrix.python-version }}
+      - name: Update pip
+        run: python -m pip install --upgrade pip
       - name: Install + test
-        shell: bash -l {0}
         run: |
           pip install -r requirements.txt
           pip install pytest
