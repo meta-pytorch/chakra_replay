@@ -16,9 +16,9 @@ import logging
 from abc import ABC, abstractmethod
 
 import torch
-
 from et_replay.comm.param_profile import paramTimer
 from torch.distributed import ProcessGroup
+
 
 logger = logging.getLogger(__name__)
 
@@ -196,19 +196,23 @@ class BaseBackend(ABC):
         self, global_rank: int, local_rank: int, world_size: int, master_ip: str
     ) -> None:
         """Print startup information of the backend."""
-        pass
 
+    # Collectives, if you would like more detailed documentation about the behavior of these collectives,
+    # visit https://pytorch.org/docs/stable/_modules/torch/distributed/distributed_c10d.html.
     @abstractmethod
-    def allgather_into_tensor_coalesced(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
+    def allgather_into_tensor_coalesced(
+        self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False
+    ):
         pass
 
-    # Collectives, if you would like more detailed documentation about the behavior of these collectives, visit https://pytorch.org/docs/stable/_modules/torch/distributed/distributed_c10d.html.
     @abstractmethod
     def all_reduce(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
         pass
 
     @abstractmethod
-    def allreduce_coalesced(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
+    def allreduce_coalesced(
+        self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False
+    ):
         pass
 
     @abstractmethod
@@ -216,7 +220,9 @@ class BaseBackend(ABC):
         pass
 
     @abstractmethod
-    def reduce_scatter_tensor_coalesced(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
+    def reduce_scatter_tensor_coalesced(
+        self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False
+    ):
         pass
 
     @abstractmethod
@@ -251,7 +257,6 @@ class BaseBackend(ABC):
     @abstractmethod
     def get_mem_size(self, collectiveArgs: collectiveArgsHolder) -> int:
         """Return memory size of current input tensor."""
-        pass
 
     @abstractmethod
     def alloc_random(
@@ -262,26 +267,22 @@ class BaseBackend(ABC):
         scaleFactor: float = 1.0,
     ) -> torch.Tensor:
         """Allocate tensor of random values according to parameters."""
-        pass
 
     @abstractmethod
     def alloc_embedding_tables(
         self, n: int, m: int, curRankDevice: str, dtype: torch.dtype
     ):
         """Allocate embedding table based on parameters."""
-        pass
 
     @abstractmethod
     def alloc_empty(
         self, sizeArr: list[int], dtype: torch.dtype, curRankDevice: str
     ) -> torch.Tensor:
         """Allocate tensor with uninitialized data based on parameters."""
-        pass
 
     @abstractmethod
     def clear_memory(self, collectiveArgs: collectiveArgsHolder):
         """Clear memory in use by backend function."""
-        pass
 
     # Getting world-size and other information.
     @abstractmethod
@@ -341,4 +342,4 @@ def register_customized_backend(
     if device is not None:
         global supportedDevices
         supportedDevices.append(device)
-    logger.info(f"Registered custom backend {name} with function {func.__name__}")
+    logger.info("Registered custom backend %s with function %s", name, func.__name__)
